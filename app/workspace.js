@@ -32,6 +32,14 @@ async function api(path, body, key) {
   return result;
 }
 
+function NavIcon({ d }) {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
+}
+const navIcons = {
+  invoices: "M7 3h7l4 4v14H7zM14 3v4h4M10 12h6M10 16h6",
+  account: "M12 12a4 4 0 100-8 4 4 0 000 8zM4 21c0-4 3.6-6 8-6s8 2 8 6",
+};
+
 function Status({ value }) {
   const tone = value === "PAID" || value === "COMPLETED" ? "good" :
     ["OPEN", "SUBMITTED", "ON_HOLD", "PENDING"].includes(value) ? "waiting" :
@@ -247,8 +255,13 @@ export default function Workspace({ accountsEnabled }) {
   return <div className="shell">
     <aside className="rail" aria-label="Workspace">
       <a className="brand" href="/">SenFund<span>Merchant workspace</span></a>
-      <nav>{[["invoices", "Invoices"], ...(profile ? [["account", "Account and wallets"]] : [])].map(([id, text]) =>
-        <a key={id} href={"#" + id} aria-current={view === id ? "page" : undefined} onClick={event => { event.preventDefault(); setView(id); setError(""); setStatus(""); }}>{text}</a>)}
+      <p className="railNavLabel">Workspace</p>
+      <nav>{[["invoices", "Invoices"]].map(([id, text]) =>
+        <a key={id} href={"#" + id} aria-current={view === id ? "page" : undefined} onClick={event => { event.preventDefault(); setView(id); setError(""); setStatus(""); }}><NavIcon d={navIcons[id]} />{text}</a>)}
+        {profile && <>
+          <p className="railNavLabel">Account</p>
+          <a href="#account" aria-current={view === "account" ? "page" : undefined} onClick={event => { event.preventDefault(); setView("account"); setError(""); setStatus(""); }}><NavIcon d={navIcons.account} />Account and wallets</a>
+        </>}
         {profile && !wallets.length && view === "invoices" && <p className="railHint">Verify a wallet before you issue invoices.</p>}</nav>
       <div className="railFooter"><p>Settlement network</p><strong>{network}</strong>{config?.chainId === 1874 && <span>Chain 1874</span>}{config?.ensName && <span>{config.ensName}</span>}</div>
     </aside>
