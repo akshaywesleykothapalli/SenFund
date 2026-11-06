@@ -103,9 +103,9 @@ function InvoiceDetail({ invoice, config, busy, onAction, onClose, onCopy }) {
         {canSimulate && invoice.conversion !== "COMPLETED" &&
           <button disabled={busy} onClick={() => onAction("convert", {})}>Simulate conversion</button>}
       </section>
-      <section><h3>INR payout</h3><p className="caption">Simulated, no funds move</p><Status value={invoice.payout} />
+      <section><h3>Payout</h3><p className="caption">Simulated, no funds move</p><Status value={invoice.payout} />
         {decision && <p>{decision.detail.source}: {decision.detail.reason}</p>}
-        {payout && <p>{payout.detail.route === "p2p" ? "Protected P2P fallback" : payout.detail.route === "mudrex" ? "Mudrex" : "Provider simulation"}{payout.detail.inr != null ? `, ${payout.detail.inr} INR simulated` : ""}{payout.reference && <>, reference <code>{payout.reference}</code></>}</p>}
+        {payout && <p>{payout.detail.route === "p2p" ? "Protected P2P fallback" : payout.detail.route === "mudrex" ? "Mudrex" : payout.detail.route === "eu_offramp" ? "MiCA off-ramp" : "Provider simulation"}{payout.detail.amount != null ? `, ${payout.detail.amount} ${payout.detail.currency} simulated` : ""}{payout.reference && <>, reference <code>{payout.reference}</code></>}</p>}
         {canSimulate && invoice.conversion === "COMPLETED" && !["COMPLETED", "FAILED"].includes(invoice.payout) &&
           <div className="hashForm"><label>Scenario<select value={scenario} onChange={event => setScenario(event.target.value)}>
             {scenarios.map(([value, text]) => <option value={value} key={value}>{text}</option>)}
@@ -272,7 +272,7 @@ export default function Workspace({ accountsEnabled }) {
         <div><h1>Invoices</h1><p>Issue USD invoices and verify test USDT payments.</p></div>
         <button className="primary" disabled={!config || !!busy || (accountsEnabled && !profile?.canIssue)} onClick={() => setShowForm(!showForm)}>{showForm ? "Close form" : "New invoice"}</button>
       </header>
-      <p className="notice">Settlement uses test USDT. USD conversion and INR payout are simulations.</p>
+      <p className="notice">Settlement uses test USDT. USD conversion and payout are simulations.</p>
       {error && <p role="alert" className="alert">{error}</p>}
       <div className="feedback" role="status">{status}</div>
       {showForm && <InvoiceForm busy={!!busy} onCreate={create} />}
@@ -282,11 +282,11 @@ export default function Workspace({ accountsEnabled }) {
           !config ? <p className="empty">Connect the local settlement service to view invoices.</p> :
           invoices.length === 0 ? <p className="empty">No invoices yet. Create an invoice to get a payment link.</p> :
           <div className="tableScroll"><table>
-            <thead><tr><th scope="col">Invoice</th><th scope="col">Amount</th><th scope="col">Settlement</th><th scope="col">INR simulation</th><th scope="col">Details</th></tr></thead>
+            <thead><tr><th scope="col">Invoice</th><th scope="col">Amount</th><th scope="col">Settlement</th><th scope="col">Payout simulation</th><th scope="col">Details</th></tr></thead>
             <tbody>{invoices.map(invoice => <tr key={invoice.id} className={selected?.id === invoice.id ? "selected" : undefined}>
               <th scope="row"><strong>{invoice.customer || invoice.id}</strong><code>{invoice.id}</code></th>
               <td className="amount" data-label="Amount">${invoice.usd} <span>USD</span></td>
-              <td data-label="Settlement">{expired(invoice) ? <span className="state bad">Expired</span> : <Status value={invoice.payment} />}</td><td data-label="INR simulation"><Status value={invoice.payout} /></td>
+              <td data-label="Settlement">{expired(invoice) ? <span className="state bad">Expired</span> : <Status value={invoice.payment} />}</td><td data-label="Payout simulation"><Status value={invoice.payout} /></td>
               <td><button className="plain" data-opens="1" disabled={!!busy} onClick={() => run("open", () => open(invoice.id))} aria-label={`Open invoice ${invoice.id}`}>Open details</button></td>
             </tr>)}</tbody>
           </table></div>}

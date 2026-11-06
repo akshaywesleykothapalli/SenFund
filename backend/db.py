@@ -9,7 +9,7 @@ create table if not exists invoices(
   usd text not null, amount_units text not null, data text not null, request text not null,
   payment text not null default 'OPEN', conversion text not null default 'NOT_STARTED',
   payout text not null default 'NOT_STARTED', needs_review int not null default 0,
-  tx_hash text, last_reason text);
+  tx_hash text, last_reason text, corridor text not null default 'IN');
 create table if not exists accounts(
   id text primary key, issuer text not null, subject text not null, email text not null,
   display_name text, unique(issuer,subject));
@@ -52,6 +52,8 @@ class DB:
         self.conn = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        if "corridor" not in {c[1] for c in self.conn.execute("pragma table_info(invoices)")}:
+            self.conn.execute("alter table invoices add column corridor text not null default 'IN'")
         self.lock = threading.RLock()
 
     def q(self, sql, *args):

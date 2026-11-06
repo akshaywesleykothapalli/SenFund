@@ -130,7 +130,8 @@ def make_handler(app, accounts=None):
                     raise ValueError("Invoice description and customer must be text.")
                 inv = app.create_invoice(body.get("usd", ""), description[:200], customer[:100],
                                          idempotency_key=self.headers.get("Idempotency-Key"),
-                                         owner=actor["id"] if actor else None)
+                                         owner=actor["id"] if actor else None,
+                                         corridor=body.get("corridor", "IN"))
                 return self._json(201, {**inv, "checkout": checkout_link(app, inv["id"])})
             if p == ["callbacks", "remittance"] and method == "POST":
                 return self._json(200, {"result": app.provider_callback(body["event_id"], body["order_id"], body["status"])})

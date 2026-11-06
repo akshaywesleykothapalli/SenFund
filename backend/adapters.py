@@ -2,9 +2,14 @@
 import uuid
 from decimal import Decimal
 
-FX_INR_PER_USD = Decimal("80")       # fixture rate
 CONVERSION_FEE_USD = Decimal("0.50")
-PAYOUT_FEE_INR = Decimal("40")
+# Fixture corridors: rates and fees are not live quotes.
+CORRIDORS = {
+    "IN": {"currency": "INR", "rate": Decimal("80"), "fee": Decimal("40"), "primary": "mudrex", "fallback": "p2p",
+           "note": "FIU-registered provider; 1% TDS applies"},
+    "EU": {"currency": "EUR", "rate": Decimal("0.92"), "fee": Decimal("1.50"), "primary": "eu_offramp", "fallback": "p2p",
+           "note": "MiCA-licensed off-ramp"},
+}
 
 
 class ProviderTimeout(Exception):
@@ -20,15 +25,17 @@ class MockConversion:
 
 
 class MockRemittance:
-    """Local fixtures for Mudrex and P2P. P2P waits for a separate simulated credit event."""
-    label = "Simulated INR payout (mock provider, no money moves)"
+    """Local fixtures per corridor. P2P waits for a separate simulated credit event."""
+    label = "Simulated payout (mock provider, no money moves)"
 
-    def __init__(self, db, scenario="success", route="mudrex"):
-        self.db, self.scenario, self.route = db, scenario, route
+    def __init__(self, db, scenario="success", route="mudrex", corridor="IN"):
+        self.db, self.scenario, self.route, self.c = db, scenario, route, CORRIDORS[corridor]
 
     def quote(self, net_usd: str) -> dict:
-        inr = Decimal(net_usd) * FX_INR_PER_USD - PAYOUT_FEE_INR
-        return {"simulated": True, "route": self.route, "rate": str(FX_INR_PER_USD), "fee_inr": str(PAYOUT_FEE_INR), "inr": str(inr.quantize(Decimal("0.01")))}
+        c = self.c
+        amount = Decimal(net_usd) * c["rate"] - c["fee"]
+        return {"simulated": True, "route": self.route, "currency": c["currency"], "rate": str(c["rate"]),
+                "fee": str(c["fee"]), "amount": str(amount.quantize(Decimal("0.01"))), "note": c["note"]}
 
     def create(self, key: str, quote: dict, recipient: dict) -> dict:
         if self.scenario == "timeout":
@@ -41,9 +48,9 @@ class MockRemittance:
             prefix = "SIM-P2P-"
         else:
             status = {"success": "COMPLETED", "hold": "ON_HOLD", "fail": "FAILED", "timeout_created": "COMPLETED"}[self.scenario]
-            prefix = "SIM-MUDREX-"
+            prefix = f"SIM-{self.route.upper()}-"
         oid = prefix + uuid.uuid4().hex[:10].upper()
-        self.db.x("insert into mock_provider_orders(key,order_id,status,detail) values(?,?,?,?)", key, oid, status, quote["inr"])
+        self.db.x("insert into mock_provider_orders(key,order_id,status,detail) values(?,?,?,?)", key, oid, status, quote["amount"])
         if self.scenario == "timeout_created":
             raise ProviderTimeout("created, but response lost")
         return {"order_id": oid, "status": status}

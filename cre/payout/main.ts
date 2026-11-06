@@ -91,7 +91,7 @@ function onHttpTrigger(runtime: Runtime<Config>, payload: HTTPPayload): Decision
     }
     if (provider.attempt === "known") {
       if (provider.route === "p2p") return result("USE_P2P", "Reconcile the existing simulated P2P order");
-      if (provider.route === "mudrex" || provider.route === "legacy") {
+      if (provider.route === "mudrex" || provider.route === "eu_offramp" || provider.route === "legacy") {
         return result("USE_MUDREX", "Reconcile the existing simulated Mudrex order");
       }
     }

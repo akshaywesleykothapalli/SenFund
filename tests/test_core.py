@@ -37,6 +37,24 @@ def test_core_flow(env):
         assert bad not in html
 
 
+def test_eu_corridor(env):
+    inv = env.app.create_invoice("25", "EU order", corridor="EU")
+    rc = devchain.pay(env.w3, inv["request"], env.payer)
+    env.mine(2)
+    env.app.submit_tx(inv["id"], rc["transactionHash"].hex())
+    env.app.run_conversion(inv["id"])
+    r = env.app.run_payout(inv["id"])
+    op = next(o for o in r["operations"] if o["stage"] == "payout")
+    assert r["payout"] == "COMPLETED" and op["external_id"].startswith("SIM-EU_OFFRAMP-")
+    assert json.loads(op["detail"])["amount"] == "21.04"
+    assert "21.04 EUR" in env.app.receipt_html(inv["id"])
+
+
+def test_unknown_corridor_rejected(env):
+    with pytest.raises(Exception):
+        env.app.create_invoice("25", "x", corridor="ZZ")
+
+
 def test_pending_until_confirmed(env):
     inv = env.app.create_invoice("25", "x")
     rc = devchain.pay(env.w3, inv["request"], env.payer)

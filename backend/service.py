@@ -12,7 +12,7 @@ from eth_account import Account
 from web3 import Web3
 
 from . import chain, ens
-from .adapters import MockConversion, MockRemittance, ProviderTimeout
+from .adapters import CORRIDORS, MockConversion, MockRemittance, ProviderTimeout
 from .config import web3_for
 from .db import DB
 from .state import InvalidTransition, transition
@@ -35,7 +35,10 @@ class SenFund:
     # ---------- invoices ----------
     def create_invoice(self, usd: str, description: str, customer: str = "",
                        beneficiary: dict | None = None, ttl: int | None = None,
-                       idempotency_key: str | None = None, owner: str | None = None) -> dict:
+                       idempotency_key: str | None = None, owner: str | None = None,
+                       corridor: str = "IN") -> dict:
+        if corridor not in CORRIDORS:
+            raise ValueError("Unknown payout corridor.")
         if not (self.cfg.settlement and self.merchant):
             raise ValueError("deployment not configured: need settlement contract and merchant key")
         try:
@@ -82,8 +85,8 @@ class SenFund:
                 existing = self._invoice_for_key(scope, idempotency_key, fingerprint)
                 if existing is not None:
                     return existing
-            self.db.x("insert into invoices(id,invoice_id,created_at,usd,amount_units,data,request) values(?,?,?,?,?,?,?)",
-                      inv, req["invoiceId"], now, str(usd_d), str(units), json.dumps(data), json.dumps(req))
+            self.db.x("insert into invoices(id,invoice_id,created_at,usd,amount_units,data,request,corridor) values(?,?,?,?,?,?,?,?)",
+                      inv, req["invoiceId"], now, str(usd_d), str(units), json.dumps(data), json.dumps(req), corridor)
             if owner is not None:
                 self.db.x("insert into invoice_owners(invoice,account_id) values(?,?)", inv, owner)
             if idempotency_key is not None:
@@ -279,7 +282,7 @@ class SenFund:
         op = self.db.one("select * from operations where key=?", key)
         if op:
             route = json.loads(op["detail"]).get("route", "legacy")
-            provider = MockRemittance(self.db, "hold" if route == "p2p" else scenario, route)
+            provider = MockRemittance(self.db, "hold" if route == "p2p" else scenario, route, r["corridor"])
             if op["external_id"]:
                 return self._apply_payout(inv, provider.status(op["external_id"]) or op["status"], "poll")
             found = provider.find_by_key(key)
@@ -290,10 +293,12 @@ class SenFund:
                 return r
         else:
             fallback = scenario == "mudrex_unavailable"
-            provider = MockRemittance(self.db, "hold" if fallback else scenario, "p2p" if fallback else "mudrex")
+            c = CORRIDORS[r["corridor"]]
+            provider = MockRemittance(self.db, "hold" if fallback else scenario,
+                                      c["fallback"] if fallback else c["primary"], r["corridor"])
             conv = json.loads(self.db.one("select detail from operations where key=?", f"{inv}:conversion:{self.cfg.env}")["detail"])
             quote = provider.quote(conv["net_usd"])
-            reason = f"{quote['inr']} INR (simulated)"
+            reason = f"{quote['amount']} {quote['currency']} (simulated)"
             if fallback:
                 quote["fallback_reason"] = "Licensed provider not available in this demo (requires identity verification). No order was submitted."
                 reason += f"; {quote['fallback_reason']}"
@@ -325,7 +330,7 @@ class SenFund:
                 raise InvalidTransition("cannot confirm credit while the payment requires review")
             if r["payout"] == "COMPLETED":
                 return r
-            provider = MockRemittance(self.db, route="p2p")
+            provider = MockRemittance(self.db, route="p2p", corridor=r["corridor"])
             if r["payout"] != "ON_HOLD" or not provider.simulate_bank_credit(key, op["external_id"]):
                 raise InvalidTransition("the simulated P2P order is not awaiting credit")
             self.db.x("update operations set status='COMPLETED' where key=?", key)
@@ -382,16 +387,16 @@ class SenFund:
                   if conv else "<p>Not run.</p>")
         payout_label = {"COMPLETED": "Simulated payout completed", "ON_HOLD": "Simulated payout on hold",
                         "FAILED": "Simulated payout failed"}.get(r["payout"], f"Simulated payout: {r['payout']}")
-        route_labels = {"mudrex": "Mudrex", "p2p": "Protected P2P fallback"}
+        route_labels = {"mudrex": "Mudrex", "p2p": "Protected P2P fallback", "eu_offramp": "MiCA off-ramp"}
         route = route_labels.get(pay.get("route"), "Mock remittance") if pay else ""
         fallback_reason = pay.get("fallback_reason", "") if pay else ""
         pay_s = (f"<p>{e(payout_label)}. Route: {e(route)} (simulated). {e(fallback_reason)}"
-                 f"</p><p>{e(pay['inr'])} INR at fixture rate {e(pay['rate'])}, fee {e(pay['fee_inr'])} INR. "
+                 f"</p><p>{e(pay['amount'])} {e(pay['currency'])} at fixture rate {e(pay['rate'])}, fee {e(pay['fee'])} {e(pay['currency'])}. "
                  f"Mock provider ref {e(ops['payout']['external_id'] or 'none')}. No money moved.</p>" if pay else "<p>Not run.</p>")
         return f"""<!doctype html><html><head><meta charset="utf-8"><title>SenFund receipt {e(inv)}</title>
 <style>body{{font:15px system-ui;max-width:720px;margin:2em auto;color:#14213d}}h1{{color:#0b6e4f}}section{{border:1px solid #ccd;border-radius:8px;padding:0 1em;margin:1em 0}}.sim{{background:#fff7e0}}</style></head>
 <body><h1>SenFund receipt</h1><p>Invoice {e(inv)} · {e(r['data']['description'])} · {e(r['usd'])} USD (test pricing) · Testnet only</p>
 <section><h2>1. Onchain settlement (Whitechain Sepolia)</h2>{onchain}</section>
 <section class="sim"><h2>2. USD conversion (simulated)</h2>{conv_s}</section>
-<section class="sim"><h2>3. INR payout (simulated)</h2>{pay_s}</section>
+<section class="sim"><h2>3. Payout (simulated)</h2>{pay_s}</section>
 <p><small>Sections 2 and 3 are simulations for demonstration. Bank details are excluded.</small></p></body></html>"""

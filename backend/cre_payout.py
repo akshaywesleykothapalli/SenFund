@@ -105,7 +105,7 @@ def run(app, lock, invoice, scenario):
         fresh = provider["attempt"] == "none"
         if route == "USE_P2P" and not ((fresh and not provider["available"]) or (known and provider["route"] == "p2p")):
             raise InvalidTransition("CRE cannot move an existing attempt to P2P")
-        if route == "USE_MUDREX" and not ((fresh and provider["available"]) or (known and provider["route"] in ("mudrex", "legacy"))):
+        if route == "USE_MUDREX" and not ((fresh and provider["available"]) or (known and provider["route"] in ("mudrex", "eu_offramp", "legacy"))):
             raise InvalidTransition("CRE cannot create or move an uncertain Mudrex attempt")
         if route != "HOLD":
             # CRE reads finalized ENS records. Check the latest address again immediately before dispatch.
