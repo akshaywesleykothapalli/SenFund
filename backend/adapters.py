@@ -9,6 +9,15 @@ CORRIDORS = {
            "note": "FIU-registered provider; 1% TDS applies"},
     "EU": {"currency": "EUR", "rate": Decimal("0.92"), "fee": Decimal("1.50"), "primary": "eu_offramp", "fallback": "p2p",
            "note": "MiCA-licensed off-ramp"},
+    # fixture rates; every corridor is simulated
+    "GB": {"currency": "GBP", "rate": Decimal("0.79"), "fee": Decimal("1.20"), "primary": "local_offramp", "fallback": "p2p",
+           "note": "FCA-registered off-ramp"},
+    "PH": {"currency": "PHP", "rate": Decimal("56"), "fee": Decimal("50"), "primary": "local_offramp", "fallback": "p2p",
+           "note": "BSP-licensed VASP"},
+    "NG": {"currency": "NGN", "rate": Decimal("1500"), "fee": Decimal("1200"), "primary": "local_offramp", "fallback": "p2p",
+           "note": "SEC-registered VASP"},
+    "BR": {"currency": "BRL", "rate": Decimal("5.40"), "fee": Decimal("4"), "primary": "local_offramp", "fallback": "p2p",
+           "note": "BCB-authorised VASP"},
 }
 
 

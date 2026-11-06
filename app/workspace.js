@@ -37,6 +37,8 @@ function NavIcon({ d }) {
 }
 const navIcons = {
   invoices: "M7 3h7l4 4v14H7zM14 3v4h4M10 12h6M10 16h6",
+  explorer: "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6",
+  how: "M4 6h16M4 12h10M4 18h6",
   account: "M12 12a4 4 0 100-8 4 4 0 000 8zM4 21c0-4 3.6-6 8-6s8 2 8 6",
 };
 
@@ -67,14 +69,25 @@ function InvoiceForm({ busy, onCreate }) {
   }
   return <form className="invoiceForm" id="new-invoice" onSubmit={onCreate}>
     <div className="sectionTitle"><h2>New invoice</h2><p>Enter the client and service details to generate a signed payment link.</p></div>
-    <div className="fields">
-      <label>Client<input name="customer" autoComplete="organization" maxLength={100} required /></label>
-      <label>Service description<input name="description" maxLength={200} required /></label>
-      <label>Amount in USD<input name="usd" inputMode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" required /></label>
-      <label>Payout corridor<select name="corridor" defaultValue="IN"><option value="IN">India (INR, simulated)</option><option value="EU">EU (EUR, simulated)</option></select></label>
-    </div>
+    <fieldset className="fields">
+      <legend>Bill to</legend>
+      <label className="wide">Client name or company<input name="customer" autoComplete="organization" placeholder="Acme Studio Ltd." maxLength={100} required /></label>
+    </fieldset>
+    <fieldset className="fields">
+      <legend>Work</legend>
+      <label className="wide">Service description<input name="description" placeholder="Brand identity design, October 2026" maxLength={200} required /><small>Shown to the client on the payment page.</small></label>
+    </fieldset>
+    <fieldset className="fields">
+      <legend>Payment</legend>
+      <label>Amount (USDT)<span className="affix"><input name="usd" inputMode="decimal" placeholder="250.00" pattern="[0-9]+([.][0-9]{1,2})?" required /><b>USDT</b></span><small>Test USDT on Whitechain Sepolia.</small></label>
+      <label>Payout corridor<select name="corridor" defaultValue="IN">
+        <option value="IN">India · INR (simulated)</option><option value="EU">Eurozone · EUR (simulated)</option>
+        <option value="GB">United Kingdom · GBP (simulated)</option><option value="PH">Philippines · PHP (simulated)</option>
+        <option value="NG">Nigeria · NGN (simulated)</option><option value="BR">Brazil · BRL (simulated)</option>
+      </select><small>Local currency you receive. No real money moves.</small></label>
+    </fieldset>
     {note && <p className="note">{note}</p>}
-    <div className="formFooter"><p>Demo pricing uses one test USDT per invoice USD.</p><button type="button" onClick={draft}>Draft note</button><button className="primary" disabled={busy}>{busy ? "Signing…" : "Sign invoice"}</button></div>
+    <div className="formFooter"><p>Client pays in USDT. SenFund routes the payout.</p><button type="button" onClick={draft}>Draft note</button><button className="primary" disabled={busy}>{busy ? "Signing…" : "Sign invoice"}</button></div>
   </form>;
 }
 
@@ -92,7 +105,7 @@ function InvoiceDetail({ invoice, config, busy, onAction, onClose, onCopy }) {
       <button className="plain" onClick={onClose}>Close details</button>
     </div>
     <dl className="facts">
-      <div><dt>Amount</dt><dd className="amount">${invoice.usd} USD</dd></div>
+      <div><dt>Amount</dt><dd className="amount">${invoice.usd} USDT</dd></div>
       <div><dt>Settlement</dt><dd>{expired(invoice) ? <span className="state bad">Expired</span> : <Status value={invoice.payment} />}</dd></div>
       {invoice.expiresAt && <div><dt>Checkout expires</dt><dd>{date(invoice.expiresAt)}</dd></div>}
       <div><dt>Created</dt><dd>{date(invoice.createdAt)}</dd></div>
@@ -125,7 +138,7 @@ function InvoiceDetail({ invoice, config, busy, onAction, onClose, onCopy }) {
       </section>
       <section><h3>Payout</h3><p className="caption">Simulated, no funds move</p><Status value={invoice.payout} />
         {decision && <p>{decision.detail.source}: {decision.detail.reason}</p>}
-        {payout && <p>{payout.detail.route === "p2p" ? "Protected P2P fallback" : payout.detail.route === "mudrex" ? "Mudrex" : payout.detail.route === "eu_offramp" ? "MiCA off-ramp" : "Provider simulation"}{payout.detail.amount != null ? `, ${payout.detail.amount} ${payout.detail.currency} simulated` : ""}{payout.reference && <>, reference <code>{payout.reference}</code></>}</p>}
+        {payout && <p>{payout.detail.route === "p2p" ? "Protected P2P fallback" : payout.detail.route === "mudrex" ? "Mudrex" : payout.detail.route === "eu_offramp" ? "MiCA off-ramp" : payout.detail.route === "local_offramp" ? "Licensed local off-ramp" : "Provider simulation"}{payout.detail.amount != null ? `, ${payout.detail.amount} ${payout.detail.currency} simulated` : ""}{payout.reference && <>, reference <code>{payout.reference}</code></>}</p>}
         {canSimulate && invoice.conversion === "COMPLETED" && !["COMPLETED", "FAILED"].includes(invoice.payout) &&
           <div className="hashForm"><label>Scenario<select value={scenario} onChange={event => setScenario(event.target.value)}>
             {scenarios.map(([value, text]) => <option value={value} key={value}>{text}</option>)}
@@ -283,14 +296,26 @@ export default function Workspace({ accountsEnabled }) {
           <p className="railNavLabel">Account</p>
           <a href="#account" aria-current={view === "account" ? "page" : undefined} onClick={event => { event.preventDefault(); setView("account"); setError(""); setStatus(""); }}><NavIcon d={navIcons.account} />Account and wallets</a>
         </>}
+        <p className="railNavLabel">Resources</p>
+        {config?.explorer && <a href={config.token ? `${config.explorer}/address/${config.token}` : config.explorer} target="_blank" rel="noreferrer"><NavIcon d={navIcons.explorer} />Block explorer</a>}
+        <a href="/#how"><NavIcon d={navIcons.how} />How settlement works</a>
         {profile && !wallets.length && view === "invoices" && <p className="railHint">Verify a wallet before you issue invoices.</p>}</nav>
-      <div className="railFooter"><p>Settlement network</p><strong>{network}</strong>{config?.chainId === 1874 && <span>Chain 1874</span>}{config?.ensName && <span>{config.ensName}</span>}</div>
+      <div className="railFooter">
+        <p>Settlement network</p>
+        <strong><i className={config ? "dot live" : "dot"} />{network}</strong>
+        <dl>
+          {config?.chainId && <><dt>Chain ID</dt><dd>{config.chainId}</dd></>}
+          {config?.token && <><dt>Token</dt><dd title={config.token}>USDT {config.token.slice(0, 6)}…{config.token.slice(-4)}</dd></>}
+          {config?.ensName && <><dt>ENS</dt><dd>{config.ensName}</dd></>}
+          <dt>Payouts</dt><dd>Simulated</dd>
+        </dl>
+      </div>
     </aside>
     <main id="invoices">
       <div className="topline"><span>Merchant workspace</span><span className="environment">{config?.env === "testnet" ? "Testnet" : config?.env ?? (loading ? "Connecting" : "Offline")}</span></div>
       {view === "invoices" ? <>
       <header className="heading">
-        <div><h1>Invoices</h1><p>Issue USD invoices and verify test USDT payments.</p></div>
+        <div><h1>Invoices</h1><p>Issue USDT invoices and track payment, conversion and payout.</p></div>
         <button className="primary" disabled={!config || !!busy || (accountsEnabled && !profile?.canIssue)} onClick={() => setShowForm(!showForm)}>{showForm ? "Close form" : "New invoice"}</button>
       </header>
       <p className="notice">Settlement uses test USDT. USD conversion and payout are simulations.</p>
@@ -300,7 +325,7 @@ export default function Workspace({ accountsEnabled }) {
         <h2 id="onboarding-title">Get started</h2>
         <ol>
           <li>Payments settle in test USDT. Conversion and payout are simulated, so no real money moves.</li>
-          <li>Pick a payout corridor: India (INR) or EU (EUR). Each falls back to protected P2P.</li>
+          <li>Pick a payout corridor: India, Eurozone, UK, Philippines, Nigeria or Brazil (all simulated). Each falls back to protected P2P.</li>
           <li>Create your first invoice and share its payment link.</li>
         </ol>
         <button className="primary" disabled={!!busy || (accountsEnabled && !profile?.canIssue)} onClick={() => setShowForm(true)}>Create first invoice</button>
@@ -315,7 +340,7 @@ export default function Workspace({ accountsEnabled }) {
             <thead><tr><th scope="col">Invoice</th><th scope="col">Amount</th><th scope="col">Settlement</th><th scope="col">Payout simulation</th><th scope="col">Details</th></tr></thead>
             <tbody>{invoices.map(invoice => <tr key={invoice.id} className={selected?.id === invoice.id ? "selected" : undefined}>
               <th scope="row"><strong>{invoice.customer || invoice.id}</strong><code>{invoice.id}</code></th>
-              <td className="amount" data-label="Amount">${invoice.usd} <span>USD</span></td>
+              <td className="amount" data-label="Amount">${invoice.usd} <span>USDT</span></td>
               <td data-label="Settlement">{expired(invoice) ? <span className="state bad">Expired</span> : <Status value={invoice.payment} />}</td><td data-label="Payout simulation"><Status value={invoice.payout} /></td>
               <td><button className="plain" data-opens="1" disabled={!!busy} onClick={() => run("open", () => open(invoice.id))} aria-label={`Open invoice ${invoice.id}`}>Open details</button></td>
             </tr>)}</tbody>

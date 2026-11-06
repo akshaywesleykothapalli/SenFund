@@ -1,7 +1,7 @@
 :root {
   color-scheme: light;
-  --paper: #f6f7f5; --white: #fff; --ink: #14181a; --muted: #5f6b66;
-  --rule: #e2e6e2; --brand: #0e7a5f; --radius: 20px;
+  --paper: #fbf8f1; --white: #fffdf8; --ink: #14181a; --muted: #6b6356;
+  --rule: #e3d9c6; --brand: #14120f; --radius: 20px;
   font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   color: var(--ink); background: var(--paper);
 }
@@ -22,14 +22,14 @@ dd:nth-of-type(4) { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
 #steps li::before { content: counter(s); display: inline-grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--rule); border-radius: 50%; font-size: 12px; }
 #steps li.active { color: var(--ink); font-weight: 650; }
 #steps li.active::before { border-color: var(--brand); color: var(--brand); }
-#steps li.done::before { content: "\2713"; background: var(--brand); border-color: var(--brand); color: #fff; }
-button { width: 100%; min-height: 44px; font: inherit; font-weight: 650; color: #fff; background: var(--brand); border: 1px solid var(--brand); border-radius: 999px; cursor: pointer; }
+#steps li.done::before { content: "\2713"; background: var(--brand); border-color: var(--brand); color: #fffdf8; }
+button { width: 100%; min-height: 44px; font: inherit; font-weight: 650; color: #fffdf8; background: var(--brand); border: 1px solid var(--brand); border-radius: 999px; cursor: pointer; }
 button:disabled { opacity: .5; cursor: default; }
 :focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
 #log { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 8px; font-size: 13px; }
 #log li { overflow-wrap: anywhere; }
 #log .err { padding: 10px 12px; color: #802f26; background: #faeae5; border: 1px solid #b95d4e; border-radius: 8px; }
-#log .ok { padding: 10px 12px; color: #24513b; background: #e2eee4; border: 1px solid var(--brand); border-radius: 8px; }
+#log .ok { padding: 10px 12px; color: #14120f; background: #e9dfcb; border: 1px solid var(--brand); border-radius: 8px; }
 #log a { display: block; margin-top: 4px; color: var(--brand); }
 a { color: var(--brand); }
 @media (max-width: 480px) { body { padding: 0; } main { border: 0; border-radius: 0; min-height: 100svh; padding: 20px 16px; } }
