@@ -1,6 +1,9 @@
 # local agent settings / tooling
 .claude/
 CLAUDE.local.md
+CLAUDE.md
+.devin/
+.impeccable/
 .codex/
 .agents/
 # secrets
