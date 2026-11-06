@@ -1,21 +1,34 @@
-:root { color-scheme: light; font: 15px/1.55 system-ui, sans-serif; color: #1b2824; background: #f6f5ef; }
+:root {
+  color-scheme: light;
+  --paper: #f6f7f8; --white: #fff; --ink: #17202a; --muted: #5b6672;
+  --rule: #dde1e6; --brand: #1f5f4a; --radius: 6px;
+  font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--ink); background: var(--paper);
+}
 * { box-sizing: border-box; }
-body { margin: 0; min-height: 100svh; display: grid; place-items: center; padding: 24px 16px; }
-.card { width: min(100%, 510px); background: #fffefa; padding: clamp(22px, 5vw, 38px); border-radius: 7px; border: 1px solid #d9ded4; border-top: 4px solid #164d3b; }
-h1 { margin: 0; font: 500 clamp(35px, 8vw, 46px)/1 Georgia, serif; letter-spacing: -.055em; }
-.wordmark { margin: 0 0 12px; color: #164d3b; font-weight: 750; letter-spacing: -.03em; }
-.badge { background: #ebeee4; border-left: 2px solid #8d9b86; padding: 9px 12px; font-size: 13px; color: #425344; margin: 16px 0; }
-dl { display: grid; grid-template-columns: minmax(74px, .36fr) minmax(0, 1fr); margin: 0 0 22px; border-top: 1px solid #d9ded4; }
-dt, dd { margin: 0; border-bottom: 1px solid #d9ded4; padding: 9px 0; }
-dt { color: #59655d; padding-right: 12px; }
-dd { overflow-wrap: anywhere; font-weight: 550; }
-button { width: 100%; padding: 10px; font: 650 15px/1.5 system-ui, sans-serif; background: #164d3b; color: #fff; border: 1px solid #164d3b; border-radius: 5px; cursor: pointer; }
-button:disabled { opacity: .6; cursor: default; }
-a { color: #164d3b; }
-.err { color: #802f26; }
-.ok { color: #24513b; font-weight: 650; }
-.foot { font-size: 13px; color: #59655d; margin: 18px 0 0; }
-#log { overflow-wrap: anywhere; padding-left: 22px; font-size: 14px; }
-#log:empty { display: none; }
-#log li + li { margin-top: 5px; }
-#log a { display: block; margin-top: 4px; }
+body { margin: 0; padding: 32px 16px; }
+main { max-width: 480px; margin: 0 auto; padding: 24px; background: var(--white); border: 1px solid var(--rule); border-radius: var(--radius); }
+h1 { font-size: 20px; font-weight: 650; margin: 0 0 4px; }
+p { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+.test, .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; background: #f5ead4; color: #6d4f18; font-size: 12px; font-weight: 650; }
+dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; margin: 16px 0; padding: 16px 0; border-block: 1px solid var(--rule); }
+dt { color: var(--muted); font-size: 13px; }
+dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+dd:nth-of-type(2) { font-size: 26px; font-weight: 700; line-height: 1.1; }
+dd:nth-of-type(4) { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+#steps { list-style: none; counter-reset: s; padding: 0; margin: 0 0 16px; display: grid; gap: 6px; }
+#steps li { counter-increment: s; display: flex; gap: 10px; align-items: center; color: var(--muted); }
+#steps li::before { content: counter(s); display: inline-grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--rule); border-radius: 50%; font-size: 12px; }
+#steps li.active { color: var(--ink); font-weight: 650; }
+#steps li.active::before { border-color: var(--brand); color: var(--brand); }
+#steps li.done::before { content: "\2713"; background: var(--brand); border-color: var(--brand); color: #fff; }
+button { width: 100%; min-height: 44px; font: inherit; font-weight: 650; color: #fff; background: var(--brand); border: 1px solid var(--brand); border-radius: var(--radius); cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
+#log { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 8px; font-size: 13px; }
+#log li { overflow-wrap: anywhere; }
+#log .err { padding: 10px 12px; color: #802f26; background: #faeae5; border: 1px solid #b95d4e; border-radius: 4px; }
+#log .ok { padding: 10px 12px; color: #24513b; background: #e2eee4; border: 1px solid var(--brand); border-radius: 4px; }
+#log a { display: block; margin-top: 4px; color: var(--brand); }
+a { color: var(--brand); }
+@media (max-width: 480px) { body { padding: 0; } main { border: 0; border-radius: 0; min-height: 100svh; padding: 20px 16px; } }

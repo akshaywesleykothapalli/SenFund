@@ -9,6 +9,7 @@ const CHAINS = {
 };
 const $ = (id) => document.getElementById(id);
 const log = (msg, cls) => { const li = document.createElement("li"); li.textContent = msg; if (cls) li.className = cls; $("log").append(li); return li; };
+const step = (id, state) => { $("step-" + id).className = state; };
 const word = (hex) => hex.replace(/^0x/i, "").toLowerCase().padStart(64, "0");
 const uint = (n) => word(BigInt(n).toString(16));
 
@@ -32,13 +33,13 @@ function encodeRequest(r, selector) {
 const address = v => typeof v === "string" && /^0x[0-9a-f]{40}$/i.test(v);
 const same = (a, b) => address(a) && address(b) && a.toLowerCase() === b.toLowerCase();
 
-function checkTrustedRequest(r, trust) {
+function checkTrustedRequest(r, trust, allowExpired) {
   if (r.chainId !== trust.chainId || !same(r.contract, trust.contract) ||
       !same(r.token, trust.token) || !same(r.merchant, trust.merchant) ||
       !address(r.recipient) || !/^0x[0-9a-f]{64}$/i.test(r.invoiceId) ||
       !/^0x[0-9a-f]{130}$/i.test(r.signature) || !/^[0-9]+$/.test(r.amount) ||
       BigInt(r.amount) <= 0n || BigInt(r.amount) >= (1n << 256n) ||
-      !Number.isSafeInteger(r.expiry) || Date.now() / 1000 > r.expiry) {
+      !Number.isSafeInteger(r.expiry) || (!allowExpired && Date.now() / 1000 > r.expiry)) {
     throw new Error("Invoice does not match the trusted checkout configuration or has expired.");
   }
 }
@@ -126,14 +127,20 @@ async function pay(r, trust) {
   if ((await eth.request({ method: "eth_chainId" })) !== want) {
     log("Switching wallet to chain " + r.chainId + "…");
     try { await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: want }] }); }
-    catch (e) { if (CHAINS[r.chainId]) await eth.request({ method: "wallet_addEthereumChain", params: [CHAINS[r.chainId]] }); else throw e; }
+    catch (e) {
+      const missingChain = e?.code === 4902 || e?.data?.originalError?.code === 4902;
+      if (!missingChain || !CHAINS[r.chainId]) throw e;
+      await eth.request({ method: "wallet_addEthereumChain", params: [CHAINS[r.chainId]] });
+    }
     if ((await eth.request({ method: "eth_chainId" })) !== want) throw new Error("Wallet is on the wrong network.");
   }
   await preflight(eth, from, r, trust);
+  step("wallet", "done"); step("approve", "active");
   log("Approve the exact amount of test USDT…");
   const a = await eth.request({ method: "eth_sendTransaction", params: [{ from, to: trust.token, data: APPROVE_SELECTOR + word(trust.contract) + uint(r.amount) }] });
   if ((await waitReceipt(eth, a)).status !== "0x1") throw new Error("Approval failed.");
   const digest = await preflight(eth, from, r, trust);
+  step("approve", "done"); step("pay", "active");
   log("Approved. Now confirm the settlement…");
   const s = await eth.request({ method: "eth_sendTransaction", params: [{ from, to: trust.contract, data: encodeRequest(r, SETTLE_SELECTOR) }] });
   log("Submitted: " + s);
@@ -142,9 +149,22 @@ async function pay(r, trust) {
     l.topics[0] === SETTLED_TOPIC && l.topics[1]?.toLowerCase() === "0x" + word(r.invoiceId) &&
     l.topics[2]?.toLowerCase() === digest && l.topics[3]?.toLowerCase() === "0x" + word(from));
   if (!ev) throw new Error("Settlement reverted or no settlement event. Invoice may be paid, cancelled or expired.");
+  step("pay", "done");
   const confirmation = log("Paid onchain in block " + parseInt(rc.blockNumber, 16) + ". The merchant will verify this receipt.", "ok");
   const ex = CHAINS[r.chainId]?.blockExplorerUrls[0];
   if (ex) { const a2 = document.createElement("a"); a2.href = ex + "/tx/" + s; a2.textContent = "View on explorer"; a2.target = "_blank"; a2.rel = "noopener"; confirmation.append(a2); }
+}
+
+// Wallet and RPC errors arrive as codes; show the payer what happened and what to do next.
+function explain(e) {
+  const msg = e?.message || String(e);
+  if (e?.code === 4001) return "You rejected a wallet request. Check wallet activity for any earlier approval before retrying.";
+  if (/wrong network/i.test(msg) || e?.code === 4902) return "Your wallet is not on Whitechain Sepolia (chain 1874). Switch networks in the wallet, then try again.";
+  if (/no longer open/i.test(msg)) return "This invoice is already paid or no longer open. Do not pay again. Contact the merchant if unsure.";
+  if (e?.code === -32002) return "A wallet request is already pending. Open your wallet to review it.";
+  if (/failed to fetch|rpc unavailable|network error|timed? ?out/i.test(msg))
+    return "The network could not be reached. Check wallet activity for any pending transaction before retrying.";
+  return msg;
 }
 
 async function init() {
@@ -152,7 +172,8 @@ async function init() {
   const response = await fetch("./trust.json", {cache: "no-store"});
   if (!response.ok) throw new Error("Checkout trust configuration is missing.");
   const trust = await response.json();
-  checkTrustedRequest(r, trust);
+  // Show expired request details for reference without treating them as verified payment instructions.
+  checkTrustedRequest(r, trust, true);
   const units = BigInt(r.amount);
   const scale = 10n ** BigInt(trust.tokenDecimals);
   const fraction = (units % scale).toString().padStart(trust.tokenDecimals, "0").replace(/0+$/, "");
@@ -165,12 +186,17 @@ async function init() {
     const dt = document.createElement("dt"); dt.textContent = k; const dd = document.createElement("dd"); dd.textContent = v; dl.append(dt, dd);
   }
   $("details").append(dl);
+  if (Date.now() / 1000 > r.expiry)
+    throw new Error("This invoice expired on " + new Date(r.expiry * 1000).toLocaleString() + ". These details are for reference only. Ask the merchant for a new link.");
   await checkRecipient(r, trust);
   $("pay").disabled = false;
   $("pay").onclick = () => {
     $("pay").disabled = true;
-    pay(r, trust).catch(e => { log(e.message || String(e), "err"); $("pay").disabled = false; });
+    pay(r, trust).catch(e => { log(explain(e), "err"); $("pay").disabled = false; });
   };
 }
 
-init().catch(e => log(e.message || String(e), "err"));
+init().catch(e => {
+  $("loading")?.remove();
+  log(explain(e), "err");
+});

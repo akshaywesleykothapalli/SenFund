@@ -1,7 +1,7 @@
-const service = "http://127.0.0.1:8700";
+import { accountMode, accountOrigin, bridgeHeaders, service } from "../../account-server";
 const invoiceId = "inv_[a-f0-9]{12}";
-const readRoute = new RegExp(`^(config|invoices(?:/${invoiceId}(?:/receipt)?)?)$`);
-const writeRoute = new RegExp(`^invoices(?:/${invoiceId}/(submit|verify|convert|payout|simulate-p2p-credit))?$`);
+const readRoute = new RegExp(`^(config|profile|wallets|invoices(?:/${invoiceId}(?:/receipt)?)?)$`);
+const writeRoute = new RegExp(`^(?:profile|wallets/(?:challenge|verify)|invoices(?:/${invoiceId}/(submit|verify|convert|payout|simulate-p2p-credit))?)$`);
 const scenarios = new Set(["success", "mudrex_unavailable", "timeout", "timeout_created", "fail"]);
 
 function json(data, status = 200) {
@@ -37,6 +37,9 @@ function invoiceView(invoice) {
 
 function validateWrite(path, body) {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("Enter valid invoice details.");
+  if (path === "wallets/challenge") return { address: body.address, purpose: body.purpose };
+  if (path === "wallets/verify") return { challenge: body.challenge, signature: body.signature };
+  if (path === "profile") return { displayName: body.displayName };
   if (path === "invoices") {
     const { usd, customer, description } = body;
     if (typeof usd !== "string" || !/^\d{1,22}(\.\d{1,2})?$/.test(usd) || !/[1-9]/.test(usd)) {
@@ -74,7 +77,9 @@ async function handle(request, context) {
   if (write) {
     const host = request.headers.get("host") ?? "";
     const origin = request.headers.get("origin");
-    if (!/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host) || origin !== `http://${host}`) {
+    const trustedOrigin = accountMode() ? accountOrigin().origin :
+      /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host) ? `http://${host}` : null;
+    if (!trustedOrigin || origin !== trustedOrigin) {
       return json({ error: "Open the local SenFund dashboard to make changes." }, 403);
     }
     if (Number(request.headers.get("content-length")) > 8192) {
@@ -89,9 +94,12 @@ async function handle(request, context) {
     }
   }
   try {
+    const headers = accountMode() ? bridgeHeaders(request) : {};
+    if (write) headers["Content-Type"] = "application/json";
+    if (key) headers["Idempotency-Key"] = key;
     const upstream = await fetch(`${service}/api/${path}`, {
       method: request.method,
-      headers: write ? { "Content-Type": "application/json", ...(key ? { "Idempotency-Key": key } : {}) } : undefined,
+      headers,
       body,
       cache: "no-store",
       redirect: "error",
@@ -108,7 +116,7 @@ async function handle(request, context) {
     }
     const payload = await upstream.json();
     if (!upstream.ok) return json({ error: payload.error || "The settlement service rejected this request." }, upstream.status);
-    if (path === "config") return json(payload);
+    if (path === "config" || path === "profile" || path.startsWith("wallets")) return json(payload);
     if (Array.isArray(payload)) return json(payload.map(invoiceView));
     if (payload.invoice) {
       return json({ ...payload, invoice: invoiceView(payload.invoice) }, upstream.status);

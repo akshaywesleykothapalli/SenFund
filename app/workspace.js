@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+const expired = invoice => invoice.payment === "OPEN" && invoice.expiresAt && invoice.expiresAt * 1000 < Date.now();
+
 const states = {
   OPEN: "Awaiting payment", SUBMITTED: "Confirming", PAID: "Verified",
   NOT_STARTED: "Not started", PENDING: "Pending", COMPLETED: "Complete",
@@ -26,7 +28,7 @@ async function api(path, body, key) {
     ...(body ? { method: "POST", headers: { "Content-Type": "application/json", ...(key ? { "Idempotency-Key": key } : {}) }, body: JSON.stringify(body) } : {}),
   });
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || "SenFund could not complete the request.");
+  if (!response.ok) throw Object.assign(new Error(result.error || "SenFund could not complete the request."), { status: response.status });
   return result;
 }
 
@@ -59,17 +61,19 @@ function InvoiceDetail({ invoice, config, busy, onAction, onClose, onCopy }) {
   const txLink = invoice.txHash && config.explorer && `${config.explorer}/tx/${invoice.txHash}`;
   return <section className="detail" aria-labelledby="invoice-title">
     <div className="detailTop">
-      <div><p className="reference">{invoice.id}</p><h2 id="invoice-title">{invoice.description}</h2><p className="muted">{invoice.customer}</p></div>
+      <div><p className="reference">{invoice.id}</p><h2 id="invoice-title" tabIndex={-1}>{invoice.description}</h2><p className="muted">{invoice.customer}</p></div>
       <button className="plain" onClick={onClose}>Close details</button>
     </div>
     <dl className="facts">
-      <div><dt>Invoice amount</dt><dd>${invoice.usd} USD</dd></div>
-      <div><dt>Created</dt><dd>{date(invoice.createdAt)}</dd></div>
+      <div><dt>Amount</dt><dd className="amount">${invoice.usd} USD</dd></div>
+      <div><dt>Settlement</dt><dd>{expired(invoice) ? <span className="state bad">Expired</span> : <Status value={invoice.payment} />}</dd></div>
       {invoice.expiresAt && <div><dt>Checkout expires</dt><dd>{date(invoice.expiresAt)}</dd></div>}
-      {invoice.recipient && <div><dt>Settlement recipient</dt><dd><code title={invoice.recipient}>{short(invoice.recipient)}</code></dd></div>}
+      <div><dt>Created</dt><dd>{date(invoice.createdAt)}</dd></div>
+      {invoice.recipient && <div className="wide"><dt>Settlement recipient</dt><dd><code>{invoice.recipient}</code></dd></div>}
+      {invoice.txHash && <div className="wide"><dt>Transaction</dt><dd><code>{invoice.txHash}</code></dd></div>}
     </dl>
-    <div className="actions">
-      {invoice.payment !== "PAID" && invoice.checkout && <>
+    <div className="actions" aria-label="Invoice actions">
+      {invoice.payment !== "PAID" && invoice.checkout && !expired(invoice) && <>
         <a className="button primary" href={invoice.checkout} target="_blank" rel="noreferrer">Open checkout</a>
         <button onClick={() => onCopy(invoice.checkout)}>Copy payment link</button>
       </>}
@@ -86,14 +90,14 @@ function InvoiceDetail({ invoice, config, busy, onAction, onClose, onCopy }) {
           <button disabled={busy}>Submit hash</button>
         </form>}
       </section>
-      <section><h3>USD conversion</h3><p className="caption">Simulation</p><Status value={invoice.conversion} />
+      <section><h3>USD conversion</h3><p className="caption">Simulated, no funds move</p><Status value={invoice.conversion} />
         {conversion && <p>{conversion.detail.net_usd} USD net after a {conversion.detail.fee_usd} USD simulated fee.</p>}
         {canSimulate && invoice.conversion !== "COMPLETED" &&
           <button disabled={busy} onClick={() => onAction("convert", {})}>Simulate conversion</button>}
       </section>
-      <section><h3>INR payout</h3><p className="caption">Simulation</p><Status value={invoice.payout} />
+      <section><h3>INR payout</h3><p className="caption">Simulated, no funds move</p><Status value={invoice.payout} />
         {decision && <p>{decision.detail.source}: {decision.detail.reason}</p>}
-        {payout && <p>{payout.detail.route === "p2p" ? "P2P fallback" : payout.detail.route === "mudrex" ? "Mudrex" : "Provider simulation"}{payout.detail.inr != null ? ` · ${payout.detail.inr} INR simulated` : ""}{payout.reference && <> · <code>{payout.reference}</code></>}</p>}
+        {payout && <p>{payout.detail.route === "p2p" ? "P2P fallback" : payout.detail.route === "mudrex" ? "Mudrex" : "Provider simulation"}{payout.detail.inr != null ? `, ${payout.detail.inr} INR simulated` : ""}{payout.reference && <>, reference <code>{payout.reference}</code></>}</p>}
         {canSimulate && invoice.conversion === "COMPLETED" && !["COMPLETED", "FAILED"].includes(invoice.payout) &&
           <div className="hashForm"><label>Scenario<select value={scenario} onChange={event => setScenario(event.target.value)}>
             {scenarios.map(([value, text]) => <option value={value} key={value}>{text}</option>)}
@@ -104,18 +108,36 @@ function InvoiceDetail({ invoice, config, busy, onAction, onClose, onCopy }) {
     </div>
     {!!invoice.history.length && <section className="history"><h3>Activity</h3><ol>
       {[...invoice.history].reverse().map((entry, index) => <li key={index}>
-        <div><strong>{stages[entry.stage] ?? entry.stage} · {label(entry.new)}</strong>{entry.reason && <p>{entry.reason}</p>}</div>
+        <div><strong>{stages[entry.stage] ?? entry.stage}: {label(entry.new)}</strong>{entry.reason && <p>{entry.reason}</p>}</div>
         <time dateTime={new Date(entry.at * 1000).toISOString()}>{date(entry.at)}</time>
       </li>)}
     </ol></section>}
   </section>;
 }
 
-export default function Workspace() {
+function Wallets({ wallets, disabled, onLink }) {
+  return <section className="invoiceForm">
+    <div className="sectionTitle"><h2>Verified wallets</h2><p>Prove wallet ownership with a message signature.</p></div>
+    {wallets.length ? <ul>{wallets.map(wallet => <li key={wallet.address + wallet.chain_id + wallet.purpose}>
+      <code>{wallet.address}</code> <span className="muted">{wallet.purpose}</span>
+    </li>)}</ul> : <p className="muted">No verified wallets.</p>}
+    <div className="actions">
+      <a className="button" href="/api/auth/sign-in">Refresh sign in</a>
+      <button disabled={disabled} onClick={() => onLink("signer")}>Verify signing wallet</button>
+      <button disabled={disabled} onClick={() => onLink("recipient")}>Verify receiving wallet</button>
+    </div>
+  </section>;
+}
+
+export default function Workspace({ accountsEnabled }) {
+  const [profile, setProfile] = useState(null);
+  const [wallets, setWallets] = useState([]);
+  const [signedOut, setSignedOut] = useState(false);
   const [config, setConfig] = useState(null);
   const [invoices, setInvoices] = useState([]);
   const [selected, setSelected] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [view, setView] = useState("invoices");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
@@ -123,17 +145,26 @@ export default function Workspace() {
   const creation = useRef(null);
 
   const refresh = useCallback(async () => {
-    const [nextConfig, list] = await Promise.all([api("config"), api("invoices")]);
+    const [nextConfig, list, account, verifiedWallets] = await Promise.all([
+      api("config"), api("invoices"), accountsEnabled ? api("profile") : null,
+      accountsEnabled ? api("wallets") : [],
+    ]);
     setConfig(nextConfig);
     setInvoices(list);
-  }, []);
+    setProfile(account);
+    setWallets(verifiedWallets);
+  }, [accountsEnabled]);
 
   useEffect(() => {
     let active = true;
-    refresh().catch(reason => { if (active) setError(reason.message); })
+    refresh().catch(reason => {
+      if (!active) return;
+      if (accountsEnabled && reason.status === 401) setSignedOut(true);
+      else setError(reason.message);
+    })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [refresh]);
+  }, [refresh, accountsEnabled]);
 
   async function run(key, task) {
     setBusy(key);
@@ -147,6 +178,11 @@ export default function Workspace() {
   async function open(id) {
     setSelected(await api(`invoices/${id}`));
   }
+
+  useEffect(() => {
+    const heading = document.getElementById("invoice-title");
+    if (heading && document.activeElement?.dataset.opens) { heading.focus(); heading.scrollIntoView({ block: "start" }); }
+  }, [selected?.id]);
 
   function create(event) {
     event.preventDefault();
@@ -182,20 +218,46 @@ export default function Workspace() {
     });
   }
 
+  function linkWallet(purpose) {
+    run("wallet", async () => {
+      const wallet = window.ethereum;
+      if (!wallet) throw new Error("Open this page in a browser with a supported Ethereum wallet.");
+      const [address] = await wallet.request({ method: "eth_requestAccounts" });
+      if (!address) throw new Error("Select a wallet account.");
+      const chain = "0x" + config.chainId.toString(16);
+      if (await wallet.request({ method: "eth_chainId" }) !== chain) {
+        await wallet.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chain }] });
+      }
+      if (await wallet.request({ method: "eth_chainId" }) !== chain) throw new Error("Switch to the configured settlement chain.");
+      const proof = await api("wallets/challenge", { address, purpose });
+      const bytes = new TextEncoder().encode(proof.message);
+      const message = "0x" + Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+      const signature = await wallet.request({ method: "personal_sign", params: [message, address] });
+      setWallets(await api("wallets/verify", { challenge: proof.challenge, signature }));
+      setStatus("Wallet ownership verified.");
+    });
+  }
+
+  if (signedOut) return <main><header className="heading"><div><h1>SenFund</h1><p>Sign in to your merchant workspace.</p></div>
+    <a className="button primary" href="/api/auth/sign-in">Sign in or register</a></header></main>;
+
   const network = config?.chainId === 1874 ? "Whitechain Sepolia" :
     config ? `Local chain ${config.chainId}` : "Connection pending";
 
   return <div className="shell">
     <aside className="rail" aria-label="Workspace">
       <a className="brand" href="/">SenFund<span>Merchant workspace</span></a>
-      <nav><a href="#invoices" aria-current="page">Invoices</a></nav>
+      <nav>{[["invoices", "Invoices"], ...(profile ? [["account", "Account and wallets"]] : [])].map(([id, text]) =>
+        <a key={id} href={"#" + id} aria-current={view === id ? "page" : undefined} onClick={event => { event.preventDefault(); setView(id); setError(""); setStatus(""); }}>{text}</a>)}
+        {profile && !wallets.length && view === "invoices" && <p className="railHint">Verify a wallet before you issue invoices.</p>}</nav>
       <div className="railFooter"><p>Settlement network</p><strong>{network}</strong>{config?.chainId === 1874 && <span>Chain 1874</span>}{config?.ensName && <span>{config.ensName}</span>}</div>
     </aside>
     <main id="invoices">
       <div className="topline"><span>Merchant workspace</span><span className="environment">{config?.env === "testnet" ? "Testnet" : config?.env ?? (loading ? "Connecting" : "Offline")}</span></div>
+      {view === "invoices" ? <>
       <header className="heading">
         <div><h1>Invoices</h1><p>Issue USD invoices and verify test USDT payments.</p></div>
-        <button className="primary" disabled={!config || !!busy} onClick={() => setShowForm(!showForm)}>{showForm ? "Close form" : "New invoice"}</button>
+        <button className="primary" disabled={!config || !!busy || (accountsEnabled && !profile?.canIssue)} onClick={() => setShowForm(!showForm)}>{showForm ? "Close form" : "New invoice"}</button>
       </header>
       <p className="notice">Settlement uses test USDT. USD conversion and INR payout are simulations.</p>
       {error && <p role="alert" className="alert">{error}</p>}
@@ -210,9 +272,9 @@ export default function Workspace() {
             <thead><tr><th scope="col">Invoice</th><th scope="col">Amount</th><th scope="col">Settlement</th><th scope="col">INR simulation</th><th scope="col">Details</th></tr></thead>
             <tbody>{invoices.map(invoice => <tr key={invoice.id} className={selected?.id === invoice.id ? "selected" : undefined}>
               <th scope="row"><strong>{invoice.customer || invoice.id}</strong><code>{invoice.id}</code></th>
-              <td className="amount">${invoice.usd} <span>USD</span></td>
-              <td><Status value={invoice.payment} /></td><td><Status value={invoice.payout} /></td>
-              <td><button className="plain" disabled={!!busy} onClick={() => run("open", () => open(invoice.id))} aria-label={`Open invoice ${invoice.id}`}>Open</button></td>
+              <td className="amount" data-label="Amount">${invoice.usd} <span>USD</span></td>
+              <td data-label="Settlement">{expired(invoice) ? <span className="state bad">Expired</span> : <Status value={invoice.payment} />}</td><td data-label="INR simulation"><Status value={invoice.payout} /></td>
+              <td><button className="plain" data-opens="1" disabled={!!busy} onClick={() => run("open", () => open(invoice.id))} aria-label={`Open invoice ${invoice.id}`}>Open details</button></td>
             </tr>)}</tbody>
           </table></div>}
       </section>
@@ -221,6 +283,32 @@ export default function Workspace() {
           await navigator.clipboard.writeText(link);
           setStatus("Payment link copied.");
         })} />}
+      </> : <>
+      <header className="heading"><div><h1>Account</h1><p>Profile, sign in and wallet ownership.</p></div></header>
+      {error && <p role="alert" className="alert">{error}</p>}
+      <div className="feedback" role="status">{status}</div>
+      {profile && <form className="invoiceForm" onSubmit={event => {
+        event.preventDefault();
+        const body = Object.fromEntries(new FormData(event.currentTarget));
+        run("profile", async () => {
+          setProfile(await api("profile", body));
+          setStatus("Profile saved.");
+        });
+      }}>
+        <div className="sectionTitle"><h2>Profile</h2><p>{profile.email}</p></div>
+        <div className="fields"><label>Display name<input name="displayName" defaultValue={profile.displayName ?? ""} maxLength={100} required /></label></div>
+        <div className="actions"><button disabled={!!busy}>Save profile</button>
+          <button type="button" disabled={!!busy} onClick={() => run("sign-out", async () => {
+            await api("auth/sign-out", {});
+            location.reload();
+          })}>Sign out</button>
+          <button type="button" disabled={!!busy} onClick={() => run("sign-out", async () => {
+            await api("auth/sign-out", { allSessions: true });
+            location.reload();
+          })}>Sign out on all devices</button></div>
+      </form>}
+      {profile && <Wallets wallets={wallets} disabled={!!busy} onLink={linkWallet} />}
+      </>}
     </main>
   </div>;
 }

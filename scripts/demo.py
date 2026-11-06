@@ -166,24 +166,12 @@ def build_evidence(cfg, w3, invoice):
     receipt = w3.eth.get_transaction_receipt(tx)
     if chain._h(receipt["blockHash"]) != confirmed["block_hash"]:
         raise ValueError("the settlement block changed during export")
-    transfer_topic = Web3.keccak(text="Transfer(address,address,uint256)")
-    payer = bytes.fromhex(confirmed["payer"][2:]).rjust(32, b"\0")
-    recipient = bytes.fromhex(request["recipient"][2:]).rjust(32, b"\0")
-    transfers = [
-        log["logIndex"] for log in receipt["logs"]
-        if log["address"].lower() == TOKEN.lower()
-        and list(log["topics"]) == [transfer_topic, payer, recipient]
-        and len(log["data"]) == 32 and int.from_bytes(log["data"]) == int(confirmed["amount"])
-        and log["logIndex"] < confirmed["log_index"]
-    ]
-    if len(transfers) != 1:
-        raise ValueError("expected one matching official USDT Transfer before InvoiceSettled")
     return {
         "environment": "Whitechain Sepolia testnet", "chainId": CHAIN_ID, "invoice": request["invoiceId"],
         "digest": request["digest"], "contract": settlement, "verifiedContract": f"{EXPLORER}/address/{settlement}?tab=contract",
         "transaction": tx, "explorerTransaction": f"{EXPLORER}/tx/{tx}",
         "blockHash": confirmed["block_hash"], "blockNumber": confirmed["block_number"],
-        "logIndex": confirmed["log_index"], "tokenTransferLogIndex": transfers[0], "confirmations": confirmed["confirmations"],
+        "logIndex": confirmed["log_index"], "tokenTransferLogIndex": confirmed["token_transfer_log_index"], "confirmations": confirmed["confirmations"],
         "payer": confirmed["payer"], "recipient": request["recipient"], "token": TOKEN,
         "amountBaseUnits": confirmed["amount"],
         "amountTestUsdt": format(Decimal(f"{confirmed['amount']}e-{DECIMALS}"), "f"),

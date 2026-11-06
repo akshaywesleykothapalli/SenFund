@@ -75,3 +75,7 @@ The tests cover tampered invoices, wrong chain or token, duplicate settlement, u
 Send an `Idempotency-Key` header when creating an invoice through the local merchant API. Generate a new key for each intended invoice, and reuse it when retrying the same request after a timeout. The service returns the original invoice and checkout link, including after a restart. Reusing a key with different invoice details returns HTTP 409.
 
 The responsive website and a future mobile client can share the invoice contract and signed checkout format. The current merchant API binds to loopback. A native client on a separate device requires an authenticated, HTTPS merchant API deployment.
+
+## Account pilot
+
+The [SRS implementation tracker](docs/SRS_IMPLEMENTATION.md) describes the optional OpenID Connect account mode, invoice ownership migration and current acceptance gaps.

@@ -1,7 +1,7 @@
 import "./style.css";
 
 export const metadata = {
-  title: "Invoices | SenFund",
+  title: "SenFund",
   description: "Issue and reconcile test USDT invoices on Whitechain Sepolia.",
 };
 

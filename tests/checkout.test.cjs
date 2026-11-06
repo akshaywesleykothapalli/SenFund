@@ -40,3 +40,44 @@ test("invalid signature, closed invoice and changed recipient cannot request app
     assert.ok(!calls.includes("eth_sendTransaction"));
   }
 });
+
+test("expired links display reference details without enabling the wallet", async () => {
+  const expired = {...invoice, expiry: 1};
+  const makeElement = () => ({textContent: "", children: [], append(...children) { this.children.push(...children); }});
+  const details = makeElement();
+  details.textContent = "Loading payment request…";
+  const button = {disabled: true};
+  const log = makeElement();
+  let walletCalls = 0;
+  const browser = vm.createContext({
+    atob,
+    location: {hash: "#req=" + Buffer.from(JSON.stringify(expired)).toString("base64url")},
+    fetch: async () => ({ok: true, json: async () => ({...trust, tokenDecimals: 6})}),
+    document: {
+      getElementById: id => ({details, pay: button, log})[id],
+      createElement: makeElement,
+    },
+    window: {ethereum: {request: async () => { walletCalls++; }}},
+  });
+  await vm.runInContext(source, browser);
+  assert.equal(details.textContent, "");
+  assert.deepEqual(details.children[0].children.map(child => child.textContent).slice(0, 8),
+    ["Merchant", trust.merchant, "Amount", "25 USDT (test)", "Chain", "Whitechain Sepolia (1874)", "Pays to", trust.recipient]);
+  assert.match(log.children[0].textContent, /expired.*for reference only/i);
+  assert.equal(button.disabled, true);
+  await assert.rejects(browser.pay(expired, trust), /expired/);
+  assert.equal(walletCalls, 0);
+});
+
+test("rejecting a network switch does not open an add network prompt", async () => {
+  const calls = [];
+  ctx.window = {ethereum: {request: async ({method}) => {
+    calls.push(method);
+    if (method === "eth_requestAccounts") return [addr(9)];
+    if (method === "eth_chainId") return "0x1";
+    if (method === "wallet_switchEthereumChain") throw Object.assign(new Error("Rejected"), {code: 4001});
+    throw new Error("Unexpected wallet call: " + method);
+  }}};
+  await assert.rejects(ctx.pay(invoice, trust), /Rejected/);
+  assert.deepEqual(calls, ["eth_requestAccounts", "eth_chainId", "wallet_switchEthereumChain"]);
+});

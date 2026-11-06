@@ -5,8 +5,14 @@
   <p class="wordmark">SenFund</p>
   <h1>Invoice checkout</h1>
   <p class="badge">Testnet checkout. Test USDT has no monetary value.</p>
-  <div id="details"><p>Loading payment request…</p></div>
-  <button id="pay" disabled>Connect wallet &amp; pay</button>
+  <div id="details"><p id="loading">Loading payment request…</p></div>
+  <ol id="steps" aria-label="Payment steps">
+    <li id="step-wallet">Connect wallet on Whitechain Sepolia</li>
+    <li id="step-approve">Approve the exact test USDT amount</li>
+    <li id="step-pay">Confirm the payment</li>
+  </ol>
+  <p class="foot">Your wallet asks twice: once to approve, once to pay. Review the payee and amount above before each prompt.</p>
+  <button id="pay" disabled>Connect wallet and pay</button>
   <ol id="log" aria-live="polite"></ol>
   <p class="foot">This page runs on its own. It talks only to your wallet and the chain, so it works while the merchant app is offline.</p>
 </main><script src="app.js"></script></body></html>

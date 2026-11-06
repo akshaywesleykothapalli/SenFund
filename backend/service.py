@@ -35,7 +35,7 @@ class SenFund:
     # ---------- invoices ----------
     def create_invoice(self, usd: str, description: str, customer: str = "",
                        beneficiary: dict | None = None, ttl: int | None = None,
-                       idempotency_key: str | None = None) -> dict:
+                       idempotency_key: str | None = None, owner: str | None = None) -> dict:
         if not (self.cfg.settlement and self.merchant):
             raise ValueError("deployment not configured: need settlement contract and merchant key")
         try:
@@ -53,6 +53,8 @@ class SenFund:
             raise ValueError("Invalid Idempotency-Key header.")
 
         scope = f"{self.cfg.env}:{self.cfg.chain_id}:{self.cfg.settlement.lower()}:{self.merchant.lower()}"
+        if owner is not None:
+            scope = f"{scope}:{owner}"
         data = {"description": description, "customer": customer, "usd": str(usd_d),
                 "beneficiary": beneficiary or {}}
         fingerprint = hashlib.sha256(json.dumps(
@@ -82,6 +84,8 @@ class SenFund:
                     return existing
             self.db.x("insert into invoices(id,invoice_id,created_at,usd,amount_units,data,request) values(?,?,?,?,?,?,?)",
                       inv, req["invoiceId"], now, str(usd_d), str(units), json.dumps(data), json.dumps(req))
+            if owner is not None:
+                self.db.x("insert into invoice_owners(invoice,account_id) values(?,?)", inv, owner)
             if idempotency_key is not None:
                 self.db.x("insert into invoice_creation_keys(scope,key,fingerprint,invoice) values(?,?,?,?)",
                           scope, idempotency_key, fingerprint, inv)
@@ -105,8 +109,18 @@ class SenFund:
         r["history"] = self.db.q("select stage,old,new,source,reason,at from transitions where invoice=? order by id", inv)
         return r
 
-    def list(self):
-        return [self.get(r["id"]) for r in self.db.q("select id from invoices order by created_at desc")]
+    def list(self, owner=None, *, legacy_only=False):
+        if legacy_only:
+            rows = self.db.q("select i.id from invoices i where not exists "
+                             "(select 1 from invoice_owners o where o.invoice=i.id) order by i.created_at desc,i.id desc")
+        elif owner is None:
+            rows = self.db.q("select id from invoices order by created_at desc,id desc")
+        else:
+            rows = self.db.q(
+                "select i.id from invoices i join invoice_owners o on o.invoice=i.id "
+                "where o.account_id=? order by i.created_at desc,i.id desc", owner,
+            )
+        return [self.get(row["id"]) for row in rows]
 
     def checkout_request(self, inv: str) -> dict:
         """What the independent checkout needs: the signed request plus public display fields. No beneficiary data."""

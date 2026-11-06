@@ -348,3 +348,14 @@ def test_recent_reconciliation_recovers_payment_without_skipping_history(env, mo
     cursor = app.db.one("select block_number from reconciliation_cursor")
     assert cursor["block_number"] == payment_block - 2
     assert app.reconcile(prioritize_recent=True) == []
+
+
+def test_settlement_without_matching_transfer_is_rejected(env, monkeypatch):
+    invoice, receipt = paid(env)
+    hash_ = chain._h(receipt["transactionHash"])
+    altered = {**receipt, "logs": [log for log in receipt["logs"]
+                                   if not log["topics"] or log["topics"][0] != chain.TRANSFER_TOPIC]}
+    monkeypatch.setattr(env.w3.eth, "get_transaction_receipt", lambda tx: altered)
+    result = env.app.submit_tx(invoice["id"], hash_)
+    assert result["reason"] == "transfer_mismatch"
+    assert env.app.get(invoice["id"])["payment"] == "OPEN"

@@ -7,6 +7,7 @@ from web3 import Web3
 from .config import ROOT
 
 ABI = json.loads((ROOT / "contracts" / "out" / "SenFundSettlement.json").read_text())["abi"]
+TRANSFER_TOPIC = Web3.keccak(text="Transfer(address,address,uint256)")
 SETTLED_TOPIC = Web3.keccak(text="InvoiceSettled(bytes32,bytes32,address,address,address,address,uint256)").hex()
 TYPES = {
     "EIP712Domain": [
@@ -85,6 +86,17 @@ def verify_receipt(w3, cfg, inv_req: dict, tx_hash: str) -> dict:
     bad = [k for k, ok in checks.items() if not ok]
     if bad:
         raise VerificationError("mismatch", ",".join(bad))
+    payer = bytes.fromhex(ev["payer"][2:]).rjust(32, b"\0")
+    recipient = bytes.fromhex(ev["recipient"][2:]).rjust(32, b"\0")
+    transfers = [
+        log["logIndex"] for log in rc["logs"]
+        if log["address"].lower() == cfg.token.lower()
+        and list(log["topics"]) == [TRANSFER_TOPIC, payer, recipient]
+        and len(log["data"]) == 32 and int.from_bytes(log["data"]) == int(ev["amount"])
+        and log["logIndex"] < match["logIndex"]
+    ]
+    if len(transfers) != 1:
+        raise VerificationError("transfer_mismatch", "expected one matching token transfer before settlement")
     canon = w3.eth.get_block(rc["blockNumber"])
     if _h(canon["hash"]) != _h(rc["blockHash"]):
         raise VerificationError("pending", "block not canonical")
@@ -92,4 +104,4 @@ def verify_receipt(w3, cfg, inv_req: dict, tx_hash: str) -> dict:
     if confs < cfg.confirmations:
         raise VerificationError("pending", f"{confs}/{cfg.confirmations} confirmations")
     return {"tx_hash": _h(tx_hash), "log_index": match["logIndex"], "block_number": rc["blockNumber"],
-            "block_hash": _h(rc["blockHash"]), "payer": ev["payer"], "amount": str(ev["amount"]), "confirmations": confs}
+            "block_hash": _h(rc["blockHash"]), "token_transfer_log_index": transfers[0], "payer": ev["payer"], "amount": str(ev["amount"]), "confirmations": confs}

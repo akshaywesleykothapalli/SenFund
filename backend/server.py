@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlparse
 
 from . import cre_payout
 
+from .accounts import Accounts
 from .config import ROOT, load, setting
 from .service import InvoiceCreationConflict, SenFund
 
@@ -20,7 +21,7 @@ def checkout_link(app, inv):
     return CHECKOUT_URL + "#req=" + base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
-def make_handler(app):
+def make_handler(app, accounts=None):
     class H(SimpleHTTPRequestHandler):
         def __init__(self, *a, **k):
             super().__init__(*a, directory=str(ROOT / "web"), **k)
@@ -32,6 +33,7 @@ def make_handler(app):
             data = json.dumps(body, default=str).encode()
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
@@ -39,7 +41,11 @@ def make_handler(app):
         def _route(self, method):
             parts = urlparse(self.path).path.strip("/").split("/")
             if parts[0] != "api":
+                if accounts:
+                    return self._json(404, {"error": "Use the SenFund web workspace."})
                 return super().do_GET() if method == "GET" else self._json(404, {"error": "not found"})
+            if accounts and not accounts.trusted_bridge(self.headers.get("X-SenFund-Bridge", "")):
+                return self._json(401, {"error": "Unauthorized."})
             body = {}
             if method == "POST":
                 try:
@@ -54,11 +60,46 @@ def make_handler(app):
                 if not isinstance(body, dict):
                     return self._json(400, {"error": "Expected a JSON object."})
             try:
+                actor = None
+                if accounts:
+                    path = parts[1:]
+                    if path == ["session", "sign-in"] and method == "POST":
+                        return self._json(201, {"token": accounts.sign_in(body)})
+                    token = self.headers.get("X-SenFund-Session", "")
+                    actor = accounts.actor(token)
+                    if actor is None:
+                        return self._json(401, {"error": "Sign in to access your workspace."})
+                    if path == ["wallets"] and method == "GET":
+                        return self._json(200, accounts.wallets(actor))
+                    if path == ["wallets", "challenge"] and method == "POST":
+                        origin = setting("SENFUND_APP_ORIGIN", "http://127.0.0.1:3000")
+                        return self._json(201, accounts.wallet_challenge(actor, token, body, origin, app.cfg.chain_id))
+                    if path == ["wallets", "verify"] and method == "POST":
+                        return self._json(200, accounts.verify_wallet(actor, token, body))
+                    if path == ["profile"]:
+                        profile = (accounts.profile(actor) if method == "GET"
+                                   else accounts.update_profile(actor, body.get("displayName")))
+                        return self._json(200, profile)
+                    if method == "POST" and path == ["session", "sign-out"]:
+                        accounts.sign_out(token, actor, body.get("allSessions") is True)
+                        return self._json(200, {"signedOut": True})
+                    if not path or path[0] not in {"invoices", "config", "cre"}:
+                        return self._json(404, {"error": "not found"})
+                    if path[0] == "invoices" and len(path) >= 2:
+                        accounts.require_owner(path[1], actor["id"])
+                    if path[0] == "cre":
+                        accounts.require_owner(path[2] if len(path) >= 3 else "", actor["id"])
+                    if path == ["invoices"] and method == "POST" and not accounts.can_issue(actor):
+                        return self._json(403, {"error": "This account is not enrolled to sign invoices."})
+                if not accounts and len(parts) >= 3 and parts[1] in {"invoices", "cre"}:
+                    invoice = parts[2] if parts[1] == "invoices" else parts[3] if len(parts) >= 4 else ""
+                    if app.db.one("select 1 from invoice_owners where invoice=?", invoice):
+                        return self._json(404, {"error": "unknown invoice"})
                 if app.cfg.cre_payouts and method == "POST" and len(parts) == 4 and parts[1] == "invoices" and parts[3] == "payout":
                     result = cre_payout.run(app, LOCK, parts[2], body.get("scenario", "success"))
                     return self._json(200, result)
                 with LOCK:
-                    return self._dispatch(method, parts[1:], body)
+                    return self._dispatch(method, parts[1:], body, actor)
             except InvoiceCreationConflict as error:
                 return self._json(409, {"error": str(error)})
             except KeyError:
@@ -68,7 +109,7 @@ def make_handler(app):
             except Exception as e:  # e.g. InvalidTransition
                 return self._json(409, {"error": f"{type(e).__name__}: {e}"})
 
-        def _dispatch(self, method, p, body):
+        def _dispatch(self, method, p, body, actor):
             if p == ["config"]:
                 c = app.cfg
                 return self._json(200, {"env": c.env, "chainId": c.chain_id, "explorer": c.explorer, "settlement": c.settlement,
@@ -81,14 +122,15 @@ def make_handler(app):
                     scenario = parse_qs(urlparse(self.path).query).get("scenario", ["success"])[0]
                     return self._json(200, cre_payout.provider_evidence(app, p[2], scenario))
             if p == ["invoices"] and method == "GET":
-                return self._json(200, app.list())
+                return self._json(200, app.list(actor["id"] if actor else None, legacy_only=actor is None))
             if p == ["invoices"] and method == "POST":
                 description = body.get("description", "Invoice")
                 customer = body.get("customer", "")
                 if not isinstance(description, str) or not isinstance(customer, str):
                     raise ValueError("Invoice description and customer must be text.")
                 inv = app.create_invoice(body.get("usd", ""), description[:200], customer[:100],
-                                         idempotency_key=self.headers.get("Idempotency-Key"))
+                                         idempotency_key=self.headers.get("Idempotency-Key"),
+                                         owner=actor["id"] if actor else None)
                 return self._json(201, {**inv, "checkout": checkout_link(app, inv["id"])})
             if p == ["callbacks", "remittance"] and method == "POST":
                 return self._json(200, {"result": app.provider_callback(body["event_id"], body["order_id"], body["status"])})
@@ -142,10 +184,16 @@ def verifier_loop(app, every=5):
 def main():
     cfg = load()
     app = SenFund(cfg)
+    accounts = None
+    if setting("SENFUND_ACCOUNT_MODE") == "1":
+        if cfg.cre_payouts:
+            raise ValueError("Disable the local CRE runner before enabling account mode.")
+        accounts = Accounts(app.db, setting("SENFUND_OIDC_ISSUER", ""),
+                            setting("SENFUND_API_BRIDGE_SECRET", ""), setting("SENFUND_OPERATOR_SUBJECT", ""))
     threading.Thread(target=verifier_loop, args=(app,), daemon=True).start()
     port = int(setting("SENFUND_PORT", "8700"))
     print(f"SenFund ({cfg.env}, chain {cfg.chain_id}) dashboard: http://localhost:{port}/  checkout: {CHECKOUT_URL}")
-    ThreadingHTTPServer(("127.0.0.1", port), make_handler(app)).serve_forever()
+    ThreadingHTTPServer(("127.0.0.1", port), make_handler(app, accounts)).serve_forever()
 
 
 if __name__ == "__main__":

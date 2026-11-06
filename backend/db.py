@@ -10,6 +10,22 @@ create table if not exists invoices(
   payment text not null default 'OPEN', conversion text not null default 'NOT_STARTED',
   payout text not null default 'NOT_STARTED', needs_review int not null default 0,
   tx_hash text, last_reason text);
+create table if not exists accounts(
+  id text primary key, issuer text not null, subject text not null, email text not null,
+  display_name text, unique(issuer,subject));
+create table if not exists account_sessions(
+  token_hash text primary key, account_id text not null, expires_at int not null, authenticated_at int not null);
+create index if not exists account_sessions_owner on account_sessions(account_id);
+create table if not exists wallet_challenges(
+  id text primary key, account_id text not null, session_hash text not null, address text not null,
+  purpose text not null, chain_id int not null, message text not null, expires_at int not null);
+create index if not exists wallet_challenges_account on wallet_challenges(account_id);
+create table if not exists verified_wallets(
+  account_id text not null, address text not null, chain_id int not null, purpose text not null,
+  verified_at int not null, primary key(chain_id,address,purpose));
+create table if not exists invoice_owners(
+  invoice text primary key, account_id text not null);
+create index if not exists invoice_owners_account on invoice_owners(account_id,invoice);
 create table if not exists invoice_creation_keys(
   scope text not null, key text not null, fingerprint text not null, invoice text not null,
   primary key(scope, key));
