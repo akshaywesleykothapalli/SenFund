@@ -54,6 +54,7 @@ function InvoiceForm({ busy, onCreate }) {
       <label>Client<input name="customer" autoComplete="organization" maxLength={100} required /></label>
       <label>Service description<input name="description" maxLength={200} required /></label>
       <label>Amount in USD<input name="usd" inputMode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" required /></label>
+      <label>Payout corridor<select name="corridor" defaultValue="IN"><option value="IN">India (INR, simulated)</option><option value="EU">EU (EUR, simulated)</option></select></label>
     </div>
     <div className="formFooter"><p>Demo pricing uses one test USDT per invoice USD.</p><button className="primary" disabled={busy}>{busy ? "Signing…" : "Sign invoice"}</button></div>
   </form>;
@@ -276,6 +277,15 @@ export default function Workspace({ accountsEnabled }) {
       <p className="notice">Settlement uses test USDT. USD conversion and payout are simulations.</p>
       {error && <p role="alert" className="alert">{error}</p>}
       <div className="feedback" role="status">{status}</div>
+      {config && !loading && invoices.length === 0 && !showForm && <section className="onboarding" aria-labelledby="onboarding-title">
+        <h2 id="onboarding-title">Get started</h2>
+        <ol>
+          <li>Payments settle in test USDT. Conversion and payout are simulated, so no real money moves.</li>
+          <li>Pick a payout corridor: India (INR) or EU (EUR). Each falls back to protected P2P.</li>
+          <li>Create your first invoice and share its payment link.</li>
+        </ol>
+        <button className="primary" disabled={!!busy || (accountsEnabled && !profile?.canIssue)} onClick={() => setShowForm(true)}>Create first invoice</button>
+      </section>}
       {showForm && <InvoiceForm busy={!!busy} onCreate={create} />}
       <section className="register" aria-labelledby="register-title">
         <div className="registerTop"><div><h2 id="register-title">Invoice register</h2>{config && <p>{invoices.length} {invoices.length === 1 ? "invoice" : "invoices"}</p>}</div><button disabled={!!busy || loading} onClick={reload}>{busy === "refresh" ? "Refreshing…" : "Refresh"}</button></div>
