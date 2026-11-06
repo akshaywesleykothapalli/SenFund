@@ -21,6 +21,16 @@ from .state import InvalidTransition, transition
 RECONCILE_BLOCKS = 500
 
 
+
+def advisor_line(quote: dict, decision: str) -> str:
+    """Plain-English status line for a payout decision: success, fallback or hold."""
+    amt = f"{quote['amount']} {quote['currency']} (simulated)"
+    return {
+        "success": f"Your payout of {amt} is complete.",
+        "fallback": f"Your payout of {amt} is going via protected P2P. Your USDT stays locked until your bank confirms the credit.",
+        "hold": f"Your payout of {amt} is on hold. The provider may have accepted the order, so we are checking before doing anything else.",
+    }[decision]
+
 class InvoiceCreationConflict(ValueError):
     """A client reused an invoice creation key for different details."""
 

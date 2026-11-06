@@ -393,3 +393,14 @@ def test_evidence_pack(env):
     text = json.dumps(pack)
     for bad in ("Client Co", "XXXX0000", "customer", "recipient", "secret", "@"):
         assert bad not in text
+
+
+@pytest.mark.parametrize("decision,phrase", [
+    ("success", "is complete"),
+    ("fallback", "Your USDT stays locked until your bank confirms the credit"),
+    ("hold", "The provider may have accepted the order, so we are checking before doing anything else"),
+])
+def test_advisor_line(decision, phrase):
+    from backend.service import advisor_line
+    line = advisor_line({"amount": "1920.00", "currency": "INR"}, decision)
+    assert phrase in line and "1920.00 INR (simulated)" in line
