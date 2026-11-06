@@ -50,7 +50,6 @@ export default async function Page() {
   return (
     <Motion>
     <div className="site">
-      <div className="aurora" aria-hidden="true"><i /><i /><i /></div>
       <header className="siteHeader">
         <div className="wrap headerRow">
           <a className="wordmark" href="/">SenFund</a>
@@ -79,7 +78,7 @@ export default async function Page() {
       <main className="siteMain">
         <section className="hero wrap">
           <div className="heroCopy">
-            <Rise i={0}><p className="heroBadge"><span className="pulse" />Whitechain Sepolia · Testnet demo</p></Rise>
+            <Rise i={0}><p className="heroBadge">Whitechain Sepolia · Testnet demo</p></Rise>
             <Rise i={1}><h1>Invoice in USD.<br />Settle in USDT.<br /><em>Paid out in INR.</em></h1></Rise>
             <Rise i={2}><p className="lede">SenFund lets Indian freelancers bill US clients in dollars, receive payment in test USDT onchain, and follow a verified receipt through simulated conversion and payout.</p></Rise>
             <Rise i={3} className="heroActions">

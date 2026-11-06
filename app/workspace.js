@@ -47,7 +47,24 @@ function Status({ value }) {
   return <span className={"state " + tone}>{label(value)}</span>;
 }
 
+// Mirrors backend advisor_line wording.
+function advisor(invoice, payout) {
+  const amt = `${payout.detail.amount} ${payout.detail.currency} (simulated)`;
+  if (invoice.payout === "COMPLETED") return `Your payout of ${amt} is complete.`;
+  if (invoice.payout === "ON_HOLD" && payout.detail.route === "p2p") return `Your payout of ${amt} is going via protected P2P. Your USDT stays locked until your bank confirms the credit.`;
+  if (invoice.payout === "ON_HOLD") return `Your payout of ${amt} is on hold. The provider may have accepted the order, so we are checking before doing anything else.`;
+  return "";
+}
+
 function InvoiceForm({ busy, onCreate }) {
+  const [note, setNote] = useState("");
+  async function draft(event) {
+    const f = event.currentTarget.form;
+    try {
+      const r = await api("draft-note", { payer: f.customer.value, amount: f.usd.value, description: f.description.value });
+      setNote(r.note);
+    } catch (error) { setNote(error.message); }
+  }
   return <form className="invoiceForm" id="new-invoice" onSubmit={onCreate}>
     <div className="sectionTitle"><h2>New invoice</h2><p>Enter the client and service details to generate a signed payment link.</p></div>
     <div className="fields">
@@ -56,7 +73,8 @@ function InvoiceForm({ busy, onCreate }) {
       <label>Amount in USD<input name="usd" inputMode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" required /></label>
       <label>Payout corridor<select name="corridor" defaultValue="IN"><option value="IN">India (INR, simulated)</option><option value="EU">EU (EUR, simulated)</option></select></label>
     </div>
-    <div className="formFooter"><p>Demo pricing uses one test USDT per invoice USD.</p><button className="primary" disabled={busy}>{busy ? "Signing…" : "Sign invoice"}</button></div>
+    {note && <p className="note">{note}</p>}
+    <div className="formFooter"><p>Demo pricing uses one test USDT per invoice USD.</p><button type="button" onClick={draft}>Draft note</button><button className="primary" disabled={busy}>{busy ? "Signing…" : "Sign invoice"}</button></div>
   </form>;
 }
 
@@ -112,6 +130,7 @@ function InvoiceDetail({ invoice, config, busy, onAction, onClose, onCopy }) {
           <div className="hashForm"><label>Scenario<select value={scenario} onChange={event => setScenario(event.target.value)}>
             {scenarios.map(([value, text]) => <option value={value} key={value}>{text}</option>)}
           </select></label><button disabled={busy} onClick={() => onAction("payout", { scenario })}>{config.crePayouts ? "Run CRE simulation" : "Simulate payout"}</button></div>}
+        {payout && <p className="advisor">{advisor(invoice, payout)}</p>}
         {canSimulate && invoice.payout === "ON_HOLD" && payout?.detail.route === "p2p" && payout.reference &&
           <button disabled={busy} onClick={() => onAction("simulate-p2p-credit", {})}>Simulate bank credit</button>}
       </section>
