@@ -372,6 +372,22 @@ class SenFund:
         return outcome
 
     # ---------- export ----------
+    def evidence_pack(self, inv: str) -> dict:
+        """Owner-facing JSON proof. Allowlisted fields only: no bank details, emails or secrets."""
+        r = self.get(inv)
+        rc = r["receipt"]
+        if r["payment"] != "PAID" or not rc:
+            raise InvalidTransition("evidence pack needs a verified payment")
+        keep = ("simulated", "gross_usd", "fee_usd", "net_usd", "route", "currency", "rate", "fee", "amount", "fallback_reason")
+        ops = [{"stage": o["stage"], "status": o["status"], "providerRef": o["external_id"],
+                "detail": {k: v for k, v in json.loads(o["detail"] or "{}").items() if k in keep}} for o in r["operations"]]
+        return {"invoice": inv, "usd": r["usd"], "description": r["data"].get("description", ""),
+                "environment": self.cfg.env, "chainId": self.cfg.chain_id, "testnetOnly": True,
+                "settlement": {k: rc[k] for k in ("tx_hash", "block_number", "block_hash", "log_index", "payer", "amount")},
+                "states": {"payment": r["payment"], "conversion": r["conversion"], "payout": r["payout"]},
+                "operations": ops, "history": r["history"],
+                "note": "Conversion and payout are simulated. No money moved."}
+
     def receipt_html(self, inv: str) -> str:
         r = self.get(inv)
         e = html.escape

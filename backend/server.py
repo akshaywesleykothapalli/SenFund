@@ -141,6 +141,8 @@ def make_handler(app, accounts=None):
                     return self._json(200, {**app.get(inv), "checkout": checkout_link(app, inv)})
                 if method == "GET" and action == "checkout-request":
                     return self._json(200, app.checkout_request(inv))
+                if method == "GET" and action == "evidence":
+                    return self._json(200, app.evidence_pack(inv))
                 if method == "GET" and action == "receipt":
                     data = app.receipt_html(inv).encode()
                     self.send_response(200)

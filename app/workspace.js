@@ -87,6 +87,7 @@ function InvoiceDetail({ invoice, config, busy, onAction, onClose, onCopy }) {
       </>}
       {txLink && <a className="button" href={txLink} target="_blank" rel="noreferrer">View transaction</a>}
       {invoice.receipt && <a className="button" href={`/api/invoices/${invoice.id}/receipt`} download>Download receipt</a>}
+      {invoice.receipt && <a className="button" href={`/api/invoices/${invoice.id}/evidence`} download={`senfund-evidence-${invoice.id}.json`}>Download evidence pack</a>}
     </div>
     {invoice.needsReview && <p className="alert">Payment review required. Payout is paused while the settlement is reconciled.</p>}
     <div className="stageGrid">

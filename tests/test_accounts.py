@@ -58,7 +58,7 @@ def test_authenticated_workspace_isolates_invoices_and_wallet_proofs(env):
             assert status == 201
             path = f"invoices/{invoice['id']}"
             assert call("invoices", token=second) == (200, [])
-            for suffix in ("", "/checkout-request", "/receipt"):
+            for suffix in ("", "/checkout-request", "/receipt", "/evidence"):
                 assert call(path + suffix, token=second)[0] == 404
             for action in ("submit", "verify", "convert", "payout", "simulate-p2p-credit"):
                 assert call(path + "/" + action, {}, second)[0] == 404

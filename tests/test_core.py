@@ -377,3 +377,19 @@ def test_settlement_without_matching_transfer_is_rejected(env, monkeypatch):
     result = env.app.submit_tx(invoice["id"], hash_)
     assert result["reason"] == "transfer_mismatch"
     assert env.app.get(invoice["id"])["payment"] == "OPEN"
+
+
+def test_evidence_pack(env):
+    inv = env.app.create_invoice("25", "Test order", customer="Client Co")
+    with pytest.raises(InvalidTransition):
+        env.app.evidence_pack(inv["id"])
+    rc = devchain.pay(env.w3, inv["request"], env.payer)
+    env.mine(2)
+    env.app.submit_tx(inv["id"], rc["transactionHash"].hex())
+    env.app.run_conversion(inv["id"])
+    env.app.run_payout(inv["id"])
+    pack = env.app.evidence_pack(inv["id"])
+    assert pack["settlement"]["tx_hash"] and pack["states"]["payout"] == "COMPLETED"
+    text = json.dumps(pack)
+    for bad in ("Client Co", "XXXX0000", "customer", "recipient", "secret", "@"):
+        assert bad not in text
