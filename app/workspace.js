@@ -12,7 +12,7 @@ const states = {
 const stages = { payment: "Settlement", conversion: "Conversion", payout: "Payout" };
 const scenarios = [
   ["success", "Mudrex available"],
-  ["mudrex_unavailable", "Mudrex unavailable before dispatch"],
+  ["mudrex_unavailable", "Licensed provider unavailable (needs identity verification)"],
   ["timeout", "Mudrex times out"],
   ["timeout_created", "Mudrex accepts, response lost"],
   ["fail", "Mudrex rejects the order"],
@@ -105,7 +105,7 @@ function InvoiceDetail({ invoice, config, busy, onAction, onClose, onCopy }) {
       </section>
       <section><h3>INR payout</h3><p className="caption">Simulated, no funds move</p><Status value={invoice.payout} />
         {decision && <p>{decision.detail.source}: {decision.detail.reason}</p>}
-        {payout && <p>{payout.detail.route === "p2p" ? "P2P fallback" : payout.detail.route === "mudrex" ? "Mudrex" : "Provider simulation"}{payout.detail.inr != null ? `, ${payout.detail.inr} INR simulated` : ""}{payout.reference && <>, reference <code>{payout.reference}</code></>}</p>}
+        {payout && <p>{payout.detail.route === "p2p" ? "Protected P2P fallback" : payout.detail.route === "mudrex" ? "Mudrex" : "Provider simulation"}{payout.detail.inr != null ? `, ${payout.detail.inr} INR simulated` : ""}{payout.reference && <>, reference <code>{payout.reference}</code></>}</p>}
         {canSimulate && invoice.conversion === "COMPLETED" && !["COMPLETED", "FAILED"].includes(invoice.payout) &&
           <div className="hashForm"><label>Scenario<select value={scenario} onChange={event => setScenario(event.target.value)}>
             {scenarios.map(([value, text]) => <option value={value} key={value}>{text}</option>)}

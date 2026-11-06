@@ -295,7 +295,7 @@ class SenFund:
             quote = provider.quote(conv["net_usd"])
             reason = f"{quote['inr']} INR (simulated)"
             if fallback:
-                quote["fallback_reason"] = "Mudrex unavailable before any order was submitted"
+                quote["fallback_reason"] = "Licensed provider not available in this demo (requires identity verification). No order was submitted."
                 reason += f"; {quote['fallback_reason']}"
             with self.db.transaction():
                 transition(self.db, inv, "payout", "QUOTED", provider.route, reason)
@@ -382,7 +382,7 @@ class SenFund:
                   if conv else "<p>Not run.</p>")
         payout_label = {"COMPLETED": "Simulated payout completed", "ON_HOLD": "Simulated payout on hold",
                         "FAILED": "Simulated payout failed"}.get(r["payout"], f"Simulated payout: {r['payout']}")
-        route_labels = {"mudrex": "Mudrex", "p2p": "P2P fallback"}
+        route_labels = {"mudrex": "Mudrex", "p2p": "Protected P2P fallback"}
         route = route_labels.get(pay.get("route"), "Mock remittance") if pay else ""
         fallback_reason = pay.get("fallback_reason", "") if pay else ""
         pay_s = (f"<p>{e(payout_label)}. Route: {e(route)} (simulated). {e(fallback_reason)}"

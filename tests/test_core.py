@@ -197,7 +197,7 @@ def test_p2p_fallback_survives_restart_and_requires_credit(env):
     assert restarted.confirm_p2p_credit(invoice_id)["payout"] == "COMPLETED"
     assert restarted.confirm_p2p_credit(invoice_id)["payout"] == "COMPLETED"
     assert len(restarted.db.q("select * from mock_provider_orders")) == 1
-    assert "Mudrex unavailable before any order was submitted" in restarted.receipt_html(invoice_id)
+    assert "Licensed provider not available in this demo (requires identity verification). No order was submitted." in restarted.receipt_html(invoice_id)
     restarted.db.close()
 
 
