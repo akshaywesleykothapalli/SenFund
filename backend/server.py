@@ -10,7 +10,7 @@ from . import cre_payout
 
 from .accounts import Accounts
 from .config import ROOT, load, setting
-from .service import InvoiceCreationConflict, SenFund
+from .service import InvoiceCreationConflict, SenFund, draft_note
 
 CHECKOUT_URL = setting("SENFUND_CHECKOUT_URL", "http://localhost:8702/")
 LOCK = threading.Lock()  # service calls are short; one at a time keeps state transitions simple
@@ -95,6 +95,8 @@ def make_handler(app, accounts=None):
                     invoice = parts[2] if parts[1] == "invoices" else parts[3] if len(parts) >= 4 else ""
                     if app.db.one("select 1 from invoice_owners where invoice=?", invoice):
                         return self._json(404, {"error": "unknown invoice"})
+                if parts[1:] == ["draft-note"] and method == "POST":
+                    return self._json(200, {"note": draft_note(str(body.get("payer", "")), str(body.get("amount", "")), str(body.get("description", "")))})
                 if app.cfg.cre_payouts and method == "POST" and len(parts) == 4 and parts[1] == "invoices" and parts[3] == "payout":
                     result = cre_payout.run(app, LOCK, parts[2], body.get("scenario", "success"))
                     return self._json(200, result)

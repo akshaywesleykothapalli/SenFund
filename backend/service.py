@@ -31,6 +31,27 @@ def advisor_line(quote: dict, decision: str) -> str:
         "hold": f"Your payout of {amt} is on hold. The provider may have accepted the order, so we are checking before doing anything else.",
     }[decision]
 
+def draft_note(payer: str, amount: str, description: str, key=None) -> str:
+    """Draft a short invoice note for the payer. Uses Claude when ANTHROPIC_API_KEY is set, else a fixed template."""
+    fallback = f"Hi {payer}, please find the invoice for {description}: {amount} USDT. Thank you."
+    key = key if key is not None else os.environ.get("ANTHROPIC_API_KEY")
+    if not key:
+        return fallback
+    import urllib.request
+    prompt = (f"Write a polite two-sentence invoice note to {payer} for {description}, amount {amount} USDT. "
+              "Do not promise payout times or exchange rates. Plain text only.")
+    req = urllib.request.Request("https://api.anthropic.com/v1/messages", method="POST",
+        headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+        data=json.dumps({"model": "claude-sonnet-5-5", "max_tokens": 200,
+                         "messages": [{"role": "user", "content": prompt}]}).encode())
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            text = json.load(r)["content"][0]["text"].strip()
+        return text or fallback
+    except Exception:  # drafting is optional; never block invoicing
+        return fallback
+
+
 class InvoiceCreationConflict(ValueError):
     """A client reused an invoice creation key for different details."""
 

@@ -404,3 +404,8 @@ def test_advisor_line(decision, phrase):
     from backend.service import advisor_line
     line = advisor_line({"amount": "1920.00", "currency": "INR"}, decision)
     assert phrase in line and "1920.00 INR (simulated)" in line
+
+
+def test_draft_note_falls_back_without_key():
+    from backend.service import draft_note
+    assert draft_note("Acme", "100", "design work", key="") == "Hi Acme, please find the invoice for design work: 100 USDT. Thank you."
