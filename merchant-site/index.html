@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Merchant integration | SenFund</title>
+  <style>
+    :root { font: 15px/1.55 system-ui,sans-serif; color: #1b2824; background: #f6f5ef; }
+    body { margin: 0; padding: 24px 16px; min-height: 85svh; display: grid; place-items: center; }
+    main { width: min(100%, 490px); box-sizing: border-box; padding: 32px; background: #fffefa; border: 1px solid #d9ded4; border-top: 4px solid #164d3b; border-radius: 7px; }
+    h1 { margin: 0; font: 500 37px/1 Georgia,serif; }
+    p { color: #59655d; }
+    label { display: block; font-weight: 650; }
+    input { box-sizing: border-box; width: 100%; margin: 6px 0 12px; padding: 10px; font: inherit; border: 1px solid #bfc9be; border-radius: 4px; }
+    button { font: inherit; font-weight: 650; color: #fff; background: #164d3b; padding: 9px 14px; border: 0; border-radius: 4px; cursor: pointer; }
+    [role="alert"] { color: #802f26; }
+  </style>
+</head>
+<body><main>
+  <h1>Merchant integration</h1>
+  <p>Open a signed SenFund invoice from a separate site. The checkout uses test USDT on Whitechain Sepolia.</p>
+  <form id="open">
+    <label for="link">SenFund checkout link</label>
+    <input id="link" type="url" required>
+    <button>Open checkout</button>
+  </form>
+  <p id="error" role="alert"></p>
+</main>
+<script>
+const checkoutOrigins = new Set(["http://localhost:8702", "http://127.0.0.1:8702"]);
+document.getElementById("open").onsubmit = event => {
+  event.preventDefault();
+  const link = new URL(document.getElementById("link").value);
+  if (checkoutOrigins.has(link.origin) && link.pathname === "/" && /^#req=[A-Za-z0-9_-]+$/.test(link.hash)) {
+    location.assign(link.href);
+  } else {
+    document.getElementById("error").textContent = "Enter a signed link from the local SenFund checkout.";
+  }
+};
+</script>
+</body>
+</html>

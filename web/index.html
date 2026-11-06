@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SenFund · Merchant dashboard</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header><strong>SenFund</strong> <span>Merchant dashboard</span> <span id="net" class="badge">…</span></header>
+<main>
+  <section class="card">
+    <h2>New USD invoice</h2>
+    <form id="create">
+      <label>Amount (USD) <input name="usd" required pattern="\d+(\.\d{1,2})?"></label>
+      <label>Description <input name="description" required></label>
+      <label>Customer <input name="customer" required></label>
+      <button>Create &amp; sign</button>
+    </form>
+    <p id="msg" role="status"></p>
+  </section>
+  <section class="card">
+    <h2>Invoices</h2>
+    <table><thead><tr><th>Invoice</th><th>USD</th><th>Payment</th><th>Conversion <small>(simulated)</small></th><th>INR payout <small>(simulated)</small></th><th></th></tr></thead>
+    <tbody id="rows"></tbody></table>
+  </section>
+  <section class="card" id="detail" hidden></section>
+  <p class="note">USD conversion and INR payout are <b>simulated</b> by mock providers. No real money moves. Mainnet and live payouts are disabled in this build.</p>
+</main>
+<script src="app.js"></script>
+</body></html>

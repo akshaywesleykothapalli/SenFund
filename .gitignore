@@ -1,0 +1,32 @@
+# local agent settings / tooling
+.claude/
+CLAUDE.local.md
+.codex/
+.agents/
+# secrets
+.env
+.env.*
+!.env.example
+*.key
+# runtime data
+.data/
+*.sqlite3
+# deps / caches
+.venv/
+node_modules/
+__pycache__/
+.pytest_cache/
+*.pyc
+.DS_Store
+# build output (rebuild with scripts/compile.py)
+contracts/out/
+contracts/node_modules/
+.cre_build_tmp.js
+# local dev chain output (throwaway dev keys)
+deployments/local.json
+
+# Generated public checkout trust configuration
+checkout/trust.json
+
+# Next.js build output
+.next/
