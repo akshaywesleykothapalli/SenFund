@@ -9,9 +9,9 @@ Payouts in this build are simulated. No real money moves. Fill every `TODO` befo
 | Source | TODO repo URL |
 | Live web app | TODO deploy URL |
 | Walkthrough video | TODO video URL |
-| Settlement contract (verified) | TODO Whitechain explorer URL |
+| Settlement contract (verified) | https://explorer.testnet.whitechain.io/address/0x613677fc94907367944DE1f0E4B88C44488B9B58 |
 | Sample settle transaction | TODO explorer tx URL |
-| ENSv2 name and record change | TODO ENS app / explorer URL |
+| ENSv2 name and record change | https://sepolia.app.ens.domains/merchant.senfund.eth |
 | CRE evidence | `docs/evidence/cre-<invoice>-<scenario>.json` (from `scripts/cre_capture.py`) |
 
 ## Walkthrough script (about 4 minutes)
