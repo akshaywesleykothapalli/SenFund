@@ -1,0 +1,13 @@
+.env
+.env.*
+*.key
+.data/
+.venv/
+node_modules/
+contracts/node_modules/
+contracts/out/
+.next/
+.git/
+.claude/
+checkout/trust.json
+deployments/local.json
