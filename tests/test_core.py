@@ -402,8 +402,9 @@ def test_evidence_pack(env):
     env.app.run_payout(inv["id"])
     pack = env.app.evidence_pack(inv["id"])
     assert pack["settlement"]["tx_hash"] and pack["states"]["payout"] == "COMPLETED"
+    assert pack["digest"] == inv["request"]["digest"]
     text = json.dumps(pack)
-    for bad in ("Client Co", "XXXX0000", "customer", "recipient", "secret", "@"):
+    for bad in ("Client Co", "Test order", "XXXX0000", "customer", "secret", "@"):
         assert bad not in text
 
 
@@ -421,3 +422,24 @@ def test_advisor_line(decision, phrase):
 def test_draft_note_falls_back_without_key():
     from backend.service import draft_note
     assert draft_note("Acme", "100", "design work", key="") == "Hi Acme, please find the invoice for design work: 100 USDT. Thank you."
+
+
+def _llm(content):
+    import io
+
+    class R(io.BytesIO):
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+    return lambda req, timeout: R(json.dumps({"choices": [{"message": {"content": content}}]}).encode())
+
+
+def test_drafter_valid_invalid_and_bad_amount():
+    from backend import drafter
+    good = json.dumps({"client_name": " Acme ", "amount_usd": 12.5, "due_date": "2026-12-01", "description": "Logo"})
+    out = drafter.draft_invoice("pay me", "http://x", "k", _llm(good))
+    assert out == {"client_name": "Acme", "amount_usd": "12.50", "due_date": "2026-12-01", "description": "Logo"}
+    with pytest.raises(ValueError):
+        drafter.draft_invoice("pay me", "http://x", "k", _llm("not json"))
+    bad = json.dumps({"client_name": "A", "amount_usd": -1, "due_date": "2026-12-01", "description": "x"})
+    with pytest.raises(ValueError):
+        drafter.draft_invoice("pay me", "http://x", "k", _llm(bad))

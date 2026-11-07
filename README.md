@@ -2,6 +2,8 @@
 
 SenFund lets you send USD invoices that customers pay in test USDT on Whitechain Sepolia (chain 1874). Each payment is verified onchain. The USD conversion and the INR payout are **simulated**. Mainnet and live payouts are disabled.
 
+Why onchain settlement: the payment receipt is a public, final event anyone can verify, so the merchant never has to trust a processor's word that a customer paid.
+
 ## Setup
 
 Use Python 3.13 and Node.js 24 or later. The Next.js workspace and its HTTP API use the existing local Python settlement service for invoice signing, persistence, reconciliation and the CRE runner. Checkout is served independently so payer links keep working when either merchant process stops.
@@ -50,10 +52,29 @@ After Whitechain source verification and a confirmed invoice payment, run `.venv
 Create and pay a separate test invoice for each run, verify its onchain payment, and run simulated USD conversion.
 
 - **Mudrex succeeds** completes the simulated INR payout on the primary route.
-- **Mudrex unavailable → P2P fallback** opens a simulated P2P order and waits for **Simulate bank credit**. The receipt records the route, fallback reason, and simulated order reference.
+- **Mudrex unavailable → Protected P2P fallback** opens a simulated P2P order. The simulated payout waits for simulated bank credit (**Simulate bank credit**). The receipt records the route, fallback reason, and simulated order reference.
 - **Mudrex accepts order, response lost** puts the payout on hold. Re-running checks the saved order before retrying. An uncertain primary order never triggers a second payout through P2P.
 
 Both routes use local fixtures and move zero real INR. Live routes require separate provider approval, a supported production network, and verified bank payout evidence.
+
+## CROPS
+
+**Censorship resistance.** Checkout is static and reads Whitechain directly. Payers can pay and verify an invoice while SenFund is offline.
+
+**Open source.** MIT licensed.
+
+**Privacy.** Invoice descriptions, client names, emails and bank details never go onchain or into checkout links. The evidence pack also leaves them out.
+
+**Security.** Invoices are EIP-712 signed. Checkout checks the merchant's ENS record before payment. The contract accepts each invoice once.
+
+Whitechain settlement is needed because it gives a public, final record that the client paid the exact signed invoice, which no merchant database can prove alone.
+
+| Evidence | Link |
+|---|---|
+| Verified settlement contract | [0x6136…9B58](https://explorer.testnet.whitechain.io/address/0x613677fc94907367944DE1f0E4B88C44488B9B58?tab=contract) |
+| Official test-USDT payment | [0xca8d…2c62](https://explorer.testnet.whitechain.io/tx/0xca8d066095a407552697f77dc866ae939390712a87e38eabb12dc52efc342c62) |
+
+Pending: ENS rotation, replacement payment, scoped delegation, outage recovery, live URL, video.
 
 ## Chainlink CRE
 
@@ -62,7 +83,7 @@ Both routes use local fixtures and move zero real INR. Live routes require separ
 ## Tests
 ```
 .venv/bin/python -m pytest -q tests
-node --test tests/checkout.test.cjs
+node --test tests/checkout.test.cjs tests/api-route.test.mjs
 npm run build
 ```
 The tests cover tampered invoices, wrong chain or token, duplicate settlement, uncertain payout retries, and recovery with the app stopped. GitHub Actions builds the contracts, runs these suites, and checks the CRE workflow types without testnet keys.
@@ -79,3 +100,10 @@ The responsive website and a future mobile client can share the invoice contract
 ## Account pilot
 
 The [SRS implementation tracker](docs/SRS_IMPLEMENTATION.md) describes the optional OpenID Connect account mode, invoice ownership migration and current acceptance gaps.
+
+## Wallet and corridors
+
+- Each user links a Whitechain Sepolia (chain 1874) wallet by signing a personal_sign proof. The user signs in their own wallet.
+- The Wallet view shows testnet balances from `GET /api/balance/<address>` (400 for a bad address, 502 if the RPC fails).
+- "Withdraw to bank" gives a quote only (amount × rate − fee). It is labelled "Simulated — no money moves".
+- Clients pay in test USDT. Corridors come from `/api/config`: IN, EU, MX, KE, AE and more. Conversion and payout stay simulated.

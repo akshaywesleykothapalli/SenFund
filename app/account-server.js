@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse } from "next/server.js";
 
 export const service = "http://127.0.0.1:8700";
 export const accountMode = () => process.env.SENFUND_ACCOUNT_MODE === "1";

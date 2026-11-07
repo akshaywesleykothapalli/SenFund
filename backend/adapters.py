@@ -18,6 +18,12 @@ CORRIDORS = {
            "note": "SEC-registered VASP"},
     "BR": {"currency": "BRL", "rate": Decimal("5.40"), "fee": Decimal("4"), "primary": "local_offramp", "fallback": "p2p",
            "note": "BCB-authorised VASP"},
+    "MX": {"currency": "MXN", "rate": Decimal("17.10"), "fee": Decimal("15"), "primary": "local_offramp", "fallback": "p2p",
+           "note": "CNBV-registered off-ramp"},
+    "KE": {"currency": "KES", "rate": Decimal("129"), "fee": Decimal("100"), "primary": "local_offramp", "fallback": "p2p",
+           "note": "Mobile-money off-ramp"},
+    "AE": {"currency": "AED", "rate": Decimal("3.67"), "fee": Decimal("4"), "primary": "local_offramp", "fallback": "p2p",
+           "note": "VARA-licensed VASP"},
 }
 
 

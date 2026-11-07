@@ -27,7 +27,7 @@ def advisor_line(quote: dict, decision: str) -> str:
     amt = f"{quote['amount']} {quote['currency']} (simulated)"
     return {
         "success": f"Your payout of {amt} is complete.",
-        "fallback": f"Your payout of {amt} is going via protected P2P. Your USDT stays locked until your bank confirms the credit.",
+        "fallback": f"Your payout of {amt} is going via Protected P2P fallback. Your USDT stays locked until your bank confirms the credit (simulated).",
         "hold": f"Your payout of {amt} is on hold. The provider may have accepted the order, so we are checking before doing anything else.",
     }[decision]
 
@@ -92,14 +92,22 @@ class SenFund:
         data = {"description": description, "customer": customer, "usd": str(usd_d),
                 "beneficiary": beneficiary or {}}
         fingerprint = hashlib.sha256(json.dumps(
-            [units, description, customer, data["beneficiary"], ttl], sort_keys=True
+            # IN keeps the old fingerprint so existing keys still match.
+            [units, description, customer, data["beneficiary"], ttl] + ([] if corridor == "IN" else [corridor]), sort_keys=True
         ).encode()).hexdigest()
         if idempotency_key is not None:
             existing = self._invoice_for_key(scope, idempotency_key, fingerprint)
             if existing is not None:
                 return existing
 
-        recipient = ens.resolve_recipient(self.cfg) if self.cfg.env == "testnet" else self.cfg.recipient
+        if self.cfg.env == "testnet":
+            # ENS lookup is two Sepolia RPC calls; cache 60s so invoice creates don't queue behind it.
+            cached = getattr(self, "_ens_cache", None)
+            if not cached or time.time() - cached[1] > 60:
+                cached = self._ens_cache = (ens.resolve_recipient(self.cfg), time.time())
+            recipient = cached[0]
+        else:
+            recipient = self.cfg.recipient
         if not recipient:
             raise ValueError("recipient not configured")
         inv = "inv_" + uuid.uuid4().hex[:12]
@@ -412,9 +420,18 @@ class SenFund:
         keep = ("simulated", "gross_usd", "fee_usd", "net_usd", "route", "currency", "rate", "fee", "amount", "fallback_reason")
         ops = [{"stage": o["stage"], "status": o["status"], "providerRef": o["external_id"],
                 "detail": {k: v for k, v in json.loads(o["detail"] or "{}").items() if k in keep}} for o in r["operations"]]
-        return {"invoice": inv, "usd": r["usd"], "description": r["data"].get("description", ""),
+        req = r["request"]
+        payout = next((o for o in reversed(ops) if o["stage"] == "payout"), None)
+        detail = payout["detail"] if payout else {}
+        order = payout and payout["providerRef"]
+        return {"invoice": inv, "digest": req["digest"], "corridor": r["corridor"],
                 "environment": self.cfg.env, "chainId": self.cfg.chain_id, "testnetOnly": True,
-                "settlement": {k: rc[k] for k in ("tx_hash", "block_number", "block_hash", "log_index", "payer", "amount")},
+                "explorer": f'{self.cfg.explorer}/tx/{rc["tx_hash"]}',
+                "settlement": {**{k: rc[k] for k in ("tx_hash", "block_number", "block_hash", "log_index", "payer", "amount")},
+                               "recipient": req["recipient"], "token": req["token"], "tokenSymbol": "USDT (test)"},
+                "payout": {"route": detail.get("route"), "fallbackReason": detail.get("fallback_reason"),
+                           "simulatedOrderRef": order,
+                           "simulatedBankRef": f"SIM-BANK-{order}" if order and r["payout"] == "COMPLETED" else None},
                 "states": {"payment": r["payment"], "conversion": r["conversion"], "payout": r["payout"]},
                 "operations": ops, "history": r["history"],
                 "note": "Conversion and payout are simulated. No money moved."}

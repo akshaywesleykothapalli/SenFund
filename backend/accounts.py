@@ -10,6 +10,8 @@ from eth_account import Account
 from eth_account.messages import encode_defunct
 from web3 import Web3
 
+from backend.adapters import CORRIDORS
+
 
 def token_hash(value):
     return hashlib.sha256(value.encode()).hexdigest()
@@ -58,8 +60,17 @@ class Accounts:
         )
 
     def profile(self, actor):
+        prefs = self.db.one("select role,corridor from account_prefs where account_id=?", actor["id"])
         return {"id": actor["id"], "email": actor["email"], "displayName": actor["display_name"],
-                "canIssue": self.can_issue(actor)}
+                "canIssue": self.can_issue(actor), "role": prefs["role"] if prefs else None,
+                "corridor": prefs["corridor"] if prefs else None}
+
+    def update_prefs(self, actor, role, corridor):
+        if role not in {"payee", "payer"} or corridor not in CORRIDORS:
+            raise ValueError("Choose whether you get paid or pay, and a payout corridor.")
+        self.db.x("insert into account_prefs(account_id,role,corridor) values(?,?,?) on conflict(account_id) "
+                  "do update set role=excluded.role, corridor=excluded.corridor", actor["id"], role, corridor)
+        return self.profile(actor)
 
     def update_profile(self, actor, display_name):
         if not isinstance(display_name, str) or not 0 < len(display_name.strip()) <= 100:

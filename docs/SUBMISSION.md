@@ -1,37 +1,36 @@
-# SenFund submission
+# SenFund demo script (2–3 minutes)
 
-Payouts in this build are simulated. No real money moves. Fill every `TODO` before submitting.
+Testnet only. Whitechain Sepolia (chain 1874). All conversion and payout amounts are simulated.
+
+| Time | Screen | Say |
+|---|---|---|
+| 0:00 | Workspace | "SenFund lets a freelancer bill in USD and get paid in test USDT on Whitechain." |
+| 0:15 | New invoice form | Create the invoice by hand: amount in test USDT, client, description, and a payout corridor (IN, EU, MX, KE, AE and more, all simulated). "Client pays in test USDT." |
+| 0:40 | Checkout link | "The link holds a signed EIP-712 invoice. Nothing private is in it." Show ENS check passing. |
+| 1:00 | Wallet | Pay the invoice. "The contract accepts each invoice once." |
+| 1:20 | Explorer | Show the transaction and the verified contract. |
+| 1:35 | Invoice PAID | Run conversion. "Simulated USD to INR or EUR quote." |
+| 1:50 | Payout | Choose Mudrex unavailable. "Protected P2P fallback. Licensed provider not available in this demo (requires identity verification). No order was submitted. The simulated payout waits for simulated bank credit." Click Simulate bank credit. |
+| 2:20 | Evidence pack | Download `senfund-evidence-<id>.json`. Show tx hash, block, route, fallback reason, simulated refs. No emails or bank details. |
+| 2:40 | Close | "Checkout works with SenFund offline. MIT licensed. Live payouts stay disabled." |
+
+## Wallet actions you must do
+
+| Action | Proof to capture |
+|---|---|
+| Pay a new invoice in test USDT from the browser wallet | Explorer tx URL, invoice ID, evidence JSON |
+| Rotate the ENS merchant record (pending) | ENS explorer record-change tx URL; checkout refusing old address |
+| Replacement payment after rotation (pending) | Second explorer tx URL to the new address |
+| Grant scoped delegation (pending) | Delegation tx or signature, scope shown in wallet |
+| Outage recovery: stop app, pay, restart (pending) | Explorer tx while app is down; invoice PAID after restart |
+| Record the video | Video URL |
 
 ## Links
 
-| Item | Link |
-|------|------|
-| Source | TODO repo URL |
-| Live web app | TODO deploy URL |
-| Walkthrough video | TODO video URL |
+| Item | URL |
+|---|---|
 | Settlement contract (verified) | https://explorer.testnet.whitechain.io/address/0x613677fc94907367944DE1f0E4B88C44488B9B58 |
-| Sample settle transaction | TODO explorer tx URL |
-| ENSv2 name and record change | https://sepolia.app.ens.domains/merchant.senfund.eth |
-| CRE evidence | `docs/evidence/cre-<invoice>-<scenario>.json` (from `scripts/cre_capture.py`) |
-
-## Walkthrough script (about 4 minutes)
-
-| # | Shot | Say |
-|---|------|-----|
-| 1 | Workspace, empty state, corridor picker | "A freelancer in India gets paid in USDT on Whitechain and receives INR." |
-| 2 | Create an invoice, copy checkout link | "The invoice is signed by the merchant. The payer cannot change the amount or recipient." |
-| 3 | Checkout page, wallet connect, approve and settle | "The payer settles on-chain in one flow." |
-| 4 | Explorer: settle tx and SETTLED event | "The backend verifies this event, not the browser." |
-| 5 | Invoice shows PAID, then route decision | "CRE reads the receipt and the ENSv2 record, then picks Mudrex, P2P or hold." |
-| 6 | Run `scripts/cre_capture.py`, show JSON | "This is the CRE decision for this receipt." |
-| 7 | Stop backend, run `scripts/recovery_demo.py` | "A payment made while we are down is found on restart." |
-| 8 | Receipt and evidence pack export | "The owner exports a receipt with every hash." |
-| 9 | Closing slide with links | "Simulated payouts today. Live adapters stay disabled until licensed." |
-
-Record shots 3 and 4 on testnet, not the local chain.
-
-## Whitechain feedback
-
-- What worked: TODO (e.g. RPC reliability, block times, explorer search)
-- Friction: TODO (e.g. faucet limits, contract verification steps, missing docs)
-- Requests: TODO
+| Official test-USDT payment | https://explorer.testnet.whitechain.io/tx/0xca8d066095a407552697f77dc866ae939390712a87e38eabb12dc52efc342c62 |
+| ENSv2 name | https://sepolia.app.ens.domains/merchant.senfund.eth |
+| Live URL | pending |
+| Video | pending |

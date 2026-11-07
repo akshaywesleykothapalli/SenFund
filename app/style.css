@@ -64,7 +64,6 @@ code { font: .86em ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap
 .rail nav [aria-current="page"] { background: #e9dfcb; color: var(--brand-deep); }
 .rail nav [aria-current="page"] svg { opacity: 1; }
 .railHint { margin: 12px 12px 0; font-size: 12px; color: #6d4f18; background: #fdf6e7; border: 1px solid #ecd9a8; border-radius: 10px; padding: 9px 11px; }
-.railFooter { margin-top: auto; padding: 16px 12px 0; border-top: 1px solid var(--rule); }
 .railFooter { margin: auto 0 0; padding: 14px 12px; border: 1px solid var(--rule); border-radius: 12px; background: #fbf7ee; }
 .railFooter p { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .railFooter strong { display: flex; align-items: center; gap: 7px; margin: 6px 0 10px; color: var(--ink); font-size: 14px; }
@@ -83,6 +82,15 @@ code { font: .86em ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap
 .affix b { display: grid; place-items: center; padding: 0 12px; border: 1px solid var(--rule); border-left: 0; border-radius: 0 10px 10px 0; font-size: 12px; color: var(--muted); background: #f5efe3; }
 @media (max-width: 600px) { .invoiceForm fieldset.fields { grid-template-columns: 1fr; } }
 main { width: min(100%, 1360px); margin: 0 auto; padding: 26px clamp(20px, 5vw, 72px) 72px; }
+.toplineRight { display: flex; align-items: center; gap: 12px; }
+.profileMenu { position: relative; }
+.profileMenu summary { list-style: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; background: var(--brand-deep, #3a3428); color: #fff; font-weight: 700; }
+.profileMenu summary::-webkit-details-marker { display: none; }
+.profilePanel { position: absolute; right: 0; top: 44px; z-index: 20; min-width: 220px; display: grid; gap: 2px; padding: 8px; background: #fffdf8; border: 1px solid var(--rule); border-radius: 16px; box-shadow: 0 12px 32px #0000001f; }
+.profilePanel p { display: grid; padding: 8px 10px 10px; border-bottom: 1px solid var(--rule); margin-bottom: 4px; color: var(--ink); }
+.profilePanel p span { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.profilePanel button { text-align: left; border: 0; background: none; padding: 9px 10px; border-radius: 10px; cursor: pointer; color: var(--ink); }
+.profilePanel button:hover { background: #efe6d4; }
 .topline { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 13px; padding-bottom: 18px; border-bottom: 1px solid var(--rule); }
 .environment { padding: 3px 9px; border: 1px solid #cbbd9f; border-radius: 8px; color: #3a3428; text-transform: capitalize; font-weight: 650; }
 .heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin: 35px 0 24px; }
@@ -287,3 +295,43 @@ input, select { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid 
 .about { text-align: center; } .about p { margin-inline: auto; }
 .band h2 { text-align: center; }
 @media (max-width: 720px) { .about .facts { grid-template-columns: 1fr; } }
+
+/* Workspace board: list + detail side by side on wide screens */
+.board { display: grid; gap: 0 24px; align-items: start; }
+@media (min-width: 1100px) {
+  .board.open { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
+  .board.open .detail { position: sticky; top: 24px; }
+  .board.open .stageGrid { grid-template-columns: 1fr; }
+  .board.open .stageGrid section + section { border-left: 0; border-top: 1px solid var(--rule); }
+  .board.open .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.nextStep { margin: 0 24px 16px; padding: 10px 12px; border-left: 3px solid var(--accent); background: #f7f2e8; border-radius: 0 8px 8px 0; font-size: 14px; font-weight: 600; }
+.nextStep.hold, .advisor.hold { border-color: #b4532a; background: #fbeee6; }
+.advisor.credit { border-color: var(--accent); background: #fbf3df; }
+.onboarding { background: var(--white); border: 1px solid var(--rule); border-radius: 16px; margin-top: 24px; padding: 24px; box-shadow: var(--shadow); }
+.onboarding ol { margin: 12px 0 18px; padding-left: 20px; color: var(--muted); line-height: 1.6; }
+.empty { text-align: center; padding: 40px 24px; }
+code { overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .tableScroll { overflow: visible; }
+  table, tbody, tr, th, td { display: block; white-space: normal; }
+  thead { display: none; }
+  tbody tr { padding: 14px 16px; border-top: 1px solid var(--rule); display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; }
+  tbody th, tbody td { padding: 0; border: 0; min-width: 0; }
+  tbody th { grid-column: 1 / -1; }
+  tbody td[data-label]::before { content: attr(data-label); display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  tbody td:last-child { grid-column: 1 / -1; }
+  tbody td:last-child button { width: 100%; min-height: 44px; }
+  .nextStep { margin-inline: 16px; }
+}
+/* wallet + form spacing */
+.heading { flex-wrap: wrap; }
+.heading .actions, .invoiceForm .actions { padding: 0; }
+.invoiceForm .actions { margin-top: 16px; }
+.invoiceForm [role="status"]:not(:empty) { margin-top: 12px; font-size: 13px; }
+.walletAddress { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; }
+.walletAddress code { overflow-wrap: anywhere; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 8px; background: #fdfaf4; }
+.balanceList { list-style: none; margin: 16px 0 0; padding: 0; }
+.balanceList li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; padding: 12px 0; border-top: 1px solid var(--rule); }
+.balanceAmounts { font-variant-numeric: tabular-nums; }
+.balanceAmounts b + b { margin-left: 12px; }

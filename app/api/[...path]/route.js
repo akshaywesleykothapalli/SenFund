@@ -1,7 +1,7 @@
-import { accountMode, accountOrigin, bridgeHeaders, service } from "../../account-server";
+import { accountMode, accountOrigin, bridgeHeaders, service } from "../../account-server.js";
 const invoiceId = "inv_[a-f0-9]{12}";
-const readRoute = new RegExp(`^(config|profile|wallets|invoices(?:/${invoiceId}(?:/receipt)?)?)$`);
-const writeRoute = new RegExp(`^(?:profile|wallets/(?:challenge|verify)|invoices(?:/${invoiceId}/(submit|verify|convert|payout|simulate-p2p-credit))?)$`);
+const readRoute = new RegExp(`^(balance/0x[0-9a-fA-F]{40}|config|draft-invoice|profile|wallets|invoices(?:/${invoiceId}(?:/(?:receipt|evidence))?)?)$`);
+const writeRoute = new RegExp(`^(?:profile|draft-invoice|draft-note|wallets/(?:challenge|verify)|invoices(?:/${invoiceId}/(submit|verify|convert|payout|simulate-p2p-credit))?)$`);
 const scenarios = new Set(["success", "mudrex_unavailable", "timeout", "timeout_created", "fail"]);
 
 function json(data, status = 200) {
@@ -12,6 +12,7 @@ function invoiceView(invoice) {
   return {
     id: invoice.id,
     usd: invoice.usd,
+    corridor: invoice.corridor,
     customer: invoice.data?.customer,
     description: invoice.data?.description,
     payment: invoice.payment,
@@ -40,8 +41,12 @@ function validateWrite(path, body) {
   if (path === "wallets/challenge") return { address: body.address, purpose: body.purpose };
   if (path === "wallets/verify") return { challenge: body.challenge, signature: body.signature };
   if (path === "profile") return { displayName: body.displayName };
+  const text = (v, max) => { if (v !== undefined && (typeof v !== "string" || v.length > max)) throw new Error(`Keep each field under ${max} characters.`); return v; };
+  if (path === "draft-invoice") return { text: text(body.text, 4000) };
+  if (path === "draft-note") return { payer: text(body.payer, 100), amount: text(body.amount, 24), description: text(body.description, 200) };
   if (path === "invoices") {
-    const { usd, customer, description } = body;
+    const { usd, customer, description, corridor } = body;
+    if (corridor !== undefined && (typeof corridor !== "string" || !/^[A-Z]{2}$/.test(corridor))) throw new Error("Select a payout corridor.");
     if (typeof usd !== "string" || !/^\d{1,22}(\.\d{1,2})?$/.test(usd) || !/[1-9]/.test(usd)) {
       throw new Error("Enter a positive USD amount with up to two decimal places.");
     }
@@ -51,7 +56,7 @@ function validateWrite(path, body) {
     if (typeof description !== "string" || !description.trim() || description.trim().length > 200) {
       throw new Error("Enter the service description using up to 200 characters.");
     }
-    return { usd, customer: customer.trim(), description: description.trim() };
+    return { usd, customer: customer.trim(), description: description.trim(), ...(corridor ? { corridor } : {}) };
   }
   if (path.endsWith("/submit")) {
     if (typeof body.tx_hash !== "string" || !/^0x[\da-f]{64}$/i.test(body.tx_hash.trim())) {
@@ -115,8 +120,11 @@ async function handle(request, context) {
       });
     }
     const payload = await upstream.json();
+    if (upstream.ok && path.endsWith("/evidence")) {
+      return Response.json(payload, { headers: { "Cache-Control": "no-store", "Content-Disposition": `attachment; filename="senfund-evidence-${segments[1]}.json"` } });
+    }
     if (!upstream.ok) return json({ error: payload.error || "The settlement service rejected this request." }, upstream.status);
-    if (path === "config" || path === "profile" || path.startsWith("wallets")) return json(payload);
+    if (path === "config" || path === "profile" || path.startsWith("draft-") || path.startsWith("balance/") || path.startsWith("wallets")) return json(payload);
     if (Array.isArray(payload)) return json(payload.map(invoiceView));
     if (payload.invoice) {
       return json({ ...payload, invoice: invoiceView(payload.invoice) }, upstream.status);

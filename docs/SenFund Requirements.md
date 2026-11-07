@@ -91,3 +91,10 @@ The checkout policy checks the live ENS recipient before approval and again befo
 4. Wire CL-01 and CL-02 into SF-04. Show the primary route, safe fallback and ambiguous-attempt hold. Export the final receipt under SF-05.
 5. Run the readiness check and export the canonical Whitechain evidence with `scripts/demo.py`. Collect WC-03, CL-03 and ENS-03. A single 2–4 minute walkthrough can show both parties and all three sponsor integrations. Track each requirement's result and its demo, repository or explorer link.
 6. Track LIVE-01 through LIVE-05 separately. Production provider credentials, live INR, bridging and live P2P remain gated by those requirements.
+
+## Wallet and corridors
+
+- Each user links a Whitechain Sepolia (chain 1874) wallet by signing a personal_sign proof. The user signs in their own wallet.
+- The Wallet view shows testnet balances from `GET /api/balance/<address>` (400 for a bad address, 502 if the RPC fails).
+- "Withdraw to bank" gives a quote only (amount × rate − fee). It is labelled "Simulated — no money moves".
+- Clients pay in test USDT. Corridors come from `/api/config`: IN, EU, MX, KE, AE and more. Conversion and payout stay simulated.

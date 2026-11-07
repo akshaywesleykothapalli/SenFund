@@ -68,3 +68,19 @@ def test_invoice_creation_retry_survives_restart(env):
         assert serve_once(restarted, b"{")[0] == 400
         assert serve_once(restarted, json.dumps({**body, "usd": "NaN"}).encode())[0] == 400
         assert len(restarted.list()) == 1
+
+
+def test_config_corridors_and_bad_balance_address(env):
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(env.app))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}/api"
+    try:
+        corridors = json.loads(urllib.request.urlopen(base + "/config").read())["corridors"]
+        assert {"IN", "EU", "MX", "KE", "AE"} <= set(corridors)
+        try:
+            urllib.request.urlopen(base + "/balance/0xbad")
+            raise AssertionError("expected 400")
+        except urllib.error.HTTPError as e:
+            assert e.code == 400
+    finally:
+        srv.shutdown()

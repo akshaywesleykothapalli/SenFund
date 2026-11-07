@@ -36,8 +36,9 @@ SenFund lets a merchant send a USD invoice that the client pays in USDT on White
 - Testnet only: Whitechain Sepolia (chain 1874) and Ethereum Sepolia for ENS. Mainnet and live payouts are disabled.
 - USD conversion and local-currency payout are **simulated**. No real fiat moves.
 - Payout routes: Mudrex as the primary route, with P2P fallback. If a primary order's outcome is uncertain, the payout goes on hold rather than retrying through P2P.
-- The product targets many payout currencies (INR, EUR, GBP, PHP, NGN, BRL and more). Today the workspace offers only the India (INR) and EU (EUR) corridors. INR is not the primary currency.
-- Open: which other corridors come next, and live provider approval.
+- The product targets many payout currencies (INR, EUR, GBP, PHP, NGN, BRL and more). The workspace offers every corridor in `backend/adapters.py` (including MX, KE and AE), all simulated. INR is not the primary currency.
+- Wallet view: users link a Whitechain Sepolia wallet with personal_sign and see testnet balances. "Withdraw to bank" only shows a quote, labelled "Simulated — no money moves". Nothing is signed.
+- Open: live provider approval.
 
 ## Brand Commitments
 

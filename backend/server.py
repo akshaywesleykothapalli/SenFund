@@ -1,19 +1,40 @@
 """SenFund merchant app: dashboard (web/) + JSON API + background verifier. stdlib http.server only."""
 import base64
 import json
+import re
+from decimal import Decimal
 import threading
 import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from . import cre_payout
+from . import cre_payout, drafter
 
 from .accounts import Accounts
-from .config import ROOT, load, setting
+from .adapters import CORRIDORS
+from .config import ROOT, load, setting, web3_for
+from .state import InvalidTransition
 from .service import InvoiceCreationConflict, SenFund, draft_note
 
 CHECKOUT_URL = setting("SENFUND_CHECKOUT_URL", "http://localhost:8702/")
 LOCK = threading.Lock()  # service calls are short; one at a time keeps state transitions simple
+
+
+ADDRESS = re.compile(r"^0x[0-9a-fA-F]{40}$")
+
+
+def balance(cfg, address):
+    """Read-only testnet balances for one address: native gas coin and the settlement token."""
+    if not ADDRESS.match(address or ""):
+        raise ValueError("Enter a valid 0x wallet address.")
+    w3 = web3_for(cfg)
+    addr = w3.to_checksum_address(address)
+    native = w3.eth.get_balance(addr)
+    data = "0x70a08231" + addr[2:].lower().rjust(64, "0")
+    raw = int(w3.eth.call({"to": w3.to_checksum_address(cfg.token), "data": data}).hex() or "0", 16)
+    return {"address": addr, "chainId": cfg.chain_id,
+            "native": str(Decimal(native) / Decimal(10**18)),
+            "token": str(Decimal(raw) / (Decimal(10) ** cfg.token_decimals))}
 
 
 def checkout_link(app, inv):
@@ -78,12 +99,14 @@ def make_handler(app, accounts=None):
                         return self._json(200, accounts.verify_wallet(actor, token, body))
                     if path == ["profile"]:
                         profile = (accounts.profile(actor) if method == "GET"
+                                   else accounts.update_prefs(actor, body.get("role"), body.get("corridor"))
+                                   if "corridor" in body
                                    else accounts.update_profile(actor, body.get("displayName")))
                         return self._json(200, profile)
                     if method == "POST" and path == ["session", "sign-out"]:
                         accounts.sign_out(token, actor, body.get("allSessions") is True)
                         return self._json(200, {"signedOut": True})
-                    if not path or path[0] not in {"invoices", "config", "cre"}:
+                    if not path or path[0] not in {"invoices", "config", "cre", "draft-invoice", "draft-note", "balance"}:
                         return self._json(404, {"error": "not found"})
                     if path[0] == "invoices" and len(path) >= 2:
                         accounts.require_owner(path[1], actor["id"])
@@ -95,11 +118,22 @@ def make_handler(app, accounts=None):
                     invoice = parts[2] if parts[1] == "invoices" else parts[3] if len(parts) >= 4 else ""
                     if app.db.one("select 1 from invoice_owners where invoice=?", invoice):
                         return self._json(404, {"error": "unknown invoice"})
+                if parts[1:] == ["draft-invoice"]:
+                    if method == "GET":
+                        return self._json(200, {"enabled": drafter.enabled()})
+                    return self._json(200, drafter.draft_invoice(body.get("text")))
                 if parts[1:] == ["draft-note"] and method == "POST":
                     return self._json(200, {"note": draft_note(str(body.get("payer", "")), str(body.get("amount", "")), str(body.get("description", "")))})
                 if app.cfg.cre_payouts and method == "POST" and len(parts) == 4 and parts[1] == "invoices" and parts[3] == "payout":
                     result = cre_payout.run(app, LOCK, parts[2], body.get("scenario", "success"))
                     return self._json(200, result)
+                if method == "GET" and len(parts) == 3 and parts[1] == "balance":  # network read; keep outside LOCK
+                    try:
+                        return self._json(200, balance(app.cfg, parts[2]))
+                    except ValueError:
+                        raise
+                    except Exception:
+                        return self._json(502, {"error": "Could not reach the Whitechain testnet RPC."})
                 with LOCK:
                     return self._dispatch(method, parts[1:], body, actor)
             except InvoiceCreationConflict as error:
@@ -108,15 +142,19 @@ def make_handler(app, accounts=None):
                 return self._json(404, {"error": "unknown invoice"})  # KeyError from service = missing row
             except (ValueError, RuntimeError) as e:
                 return self._json(400, {"error": str(e)})
-            except Exception as e:  # e.g. InvalidTransition
-                return self._json(409, {"error": f"{type(e).__name__}: {e}"})
+            except InvalidTransition as e:
+                return self._json(409, {"error": str(e)})
+            except Exception:  # never leak internals to the client
+                return self._json(500, {"error": "Something went wrong."})
 
         def _dispatch(self, method, p, body, actor):
             if p == ["config"]:
                 c = app.cfg
                 return self._json(200, {"env": c.env, "chainId": c.chain_id, "explorer": c.explorer, "settlement": c.settlement,
                                         "token": c.token, "merchant": app.merchant, "recipient": c.recipient,
-                                        "confirmations": c.confirmations, "ensName": c.ens_name, "crePayouts": c.cre_payouts, "livePayouts": False, "mainnet": False})
+                                        "confirmations": c.confirmations, "ensName": c.ens_name, "crePayouts": c.cre_payouts, "livePayouts": False, "mainnet": False,
+                                        "corridors": {k: {"currency": v["currency"], "rate": str(v["rate"]), "fee": str(v["fee"]), "note": v["note"]}
+                                                      for k, v in CORRIDORS.items()}})
             if app.cfg.cre_payouts and method == "GET" and len(p) == 3 and p[0] == "cre":
                 if p[1] == "receipt":
                     return self._json(200, cre_payout.receipt_evidence(app, p[2]))
@@ -198,6 +236,7 @@ def main():
     threading.Thread(target=verifier_loop, args=(app,), daemon=True).start()
     port = int(setting("SENFUND_PORT", "8700"))
     print(f"SenFund ({cfg.env}, chain {cfg.chain_id}) dashboard: http://localhost:{port}/  checkout: {CHECKOUT_URL}")
+    ThreadingHTTPServer.request_queue_size = 128  # default backlog 5 drops bursts
     ThreadingHTTPServer(("127.0.0.1", port), make_handler(app, accounts)).serve_forever()
 
 

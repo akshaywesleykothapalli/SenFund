@@ -97,7 +97,7 @@ function onHttpTrigger(runtime: Runtime<Config>, payload: HTTPPayload): Decision
     }
     if (provider.attempt !== "none") return result("HOLD", "Prior payout outcome unknown");
     if (provider.available === true) return result("USE_MUDREX", "Primary is available before dispatch");
-    if (provider.available === false) return result("USE_P2P", "Primary unavailable before dispatch");
+    if (provider.available === false) return result("USE_P2P", "Licensed provider not available in this demo (requires identity verification). No order was submitted.");
     return result("HOLD", "Provider availability is missing");
   } catch {
     return result("HOLD", "Settlement or provider evidence unavailable");

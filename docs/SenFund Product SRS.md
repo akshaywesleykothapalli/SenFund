@@ -106,3 +106,10 @@ The existing [SenFund Requirements](SenFund%20Requirements.md) covers sponsor in
 2. [ERC-4361 wallet signing and challenge validation](https://eips.ethereum.org/EIPS/eip-4361) and [EIP-712 typed signatures](https://eips.ethereum.org/EIPS/eip-712).
 3. [OAuth for native applications](https://www.rfc-editor.org/rfc/rfc8252.html) and [OAuth security best current practice](https://www.rfc-editor.org/rfc/rfc9700.html).
 4. [WCAG 2.2](https://www.w3.org/TR/WCAG22/).
+
+## Wallet and corridors
+
+- Each user links a Whitechain Sepolia (chain 1874) wallet by signing a personal_sign proof. The user signs in their own wallet.
+- The Wallet view shows testnet balances from `GET /api/balance/<address>` (400 for a bad address, 502 if the RPC fails).
+- "Withdraw to bank" gives a quote only (amount × rate − fee). It is labelled "Simulated — no money moves".
+- Clients pay in test USDT. Corridors come from `/api/config`: IN, EU, MX, KE, AE and more. Conversion and payout stay simulated.

@@ -13,6 +13,8 @@ create table if not exists invoices(
 create table if not exists accounts(
   id text primary key, issuer text not null, subject text not null, email text not null,
   display_name text, unique(issuer,subject));
+create table if not exists account_prefs(
+  account_id text primary key, role text, corridor text);
 create table if not exists account_sessions(
   token_hash text primary key, account_id text not null, expires_at int not null, authenticated_at int not null);
 create index if not exists account_sessions_owner on account_sessions(account_id);
