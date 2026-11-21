@@ -1,0 +1,25 @@
+{
+  "run": "8b624249907543ac8cb4594e62659559",
+  "receipt": {
+    "invoice": "inv_4fe69ac0f479",
+    "digest": "0x61cd04d65d85cf34b98689ae4234a207cf2e8bd48794ca06f48711848d5a19ed",
+    "recipient": "0x09e5f80f0f9c90976116c4f7aec7f484e8181e19",
+    "environment": "testnet",
+    "chainId": 1874,
+    "txHash": "0xca8d066095a407552697f77dc866ae939390712a87e38eabb12dc52efc342c62",
+    "blockHash": "0xdd0d9e3733b2f85ff1af09a4f9bdce910161935a0bbcf7bc58b6803869e051b8",
+    "logIndex": 2,
+    "attemptKey": "inv_4fe69ac0f479:payout:testnet"
+  },
+  "scenario": "mudrex_unavailable",
+  "name": "merchant.senfund.eth",
+  "resolver": "0x0a2b85e2472e7549D79dB010CcbdfA52E00C38d3",
+  "provider": {
+    "attemptKey": "inv_4fe69ac0f479:payout:testnet",
+    "available": false,
+    "attempt": "none",
+    "route": "",
+    "status": "",
+    "simulated": true
+  }
+}

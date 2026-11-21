@@ -2,3 +2,7 @@ staging-settings:
   rpcs:
     - chain-name: ethereum-testnet-sepolia
       url: "${SENFUND_ENS_RPC}"
+ens-mainnet-settings:
+  rpcs:
+    - chain-name: ethereum-mainnet
+      url: "${SENFUND_ENS_RPC}"

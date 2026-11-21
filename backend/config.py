@@ -13,6 +13,7 @@ WHITECHAIN_SEPOLIA = {
     "explorer": "https://explorer.testnet.whitechain.io",
     "usdt": "0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7",  # official Whitechain test USDT
     "usdt_decimals": 6,
+    "wrapped_wbt": "0x4200000000000000000000000000000000000006",
 }
 ALLOWED_ENVS = {"testnet", "local", "test"}
 
@@ -37,6 +38,15 @@ class Config:
     ens_name: str = ""
     ens_resolver: str = ""
     cre_payouts: bool = False
+    ens_network: str = "sepolia"
+    wrapped_wbt: str = ""
+
+    @property
+    def payment_assets(self):
+        assets = {"USDT": (self.token, self.token_decimals)}
+        if self.wrapped_wbt:
+            assets["WBT"] = (self.wrapped_wbt, 18)
+        return assets
 
     def with_(self, **kw):
         return replace(self, **kw)
@@ -65,7 +75,11 @@ def guard(env: str):
 
 
 def load() -> Config:
+    from .ens import network
+
     _load_dotenv()
+    ens_network = setting("SENFUND_ENS_NETWORK", "sepolia")
+    network(ens_network)
     env = setting("SENFUND_ENV", "testnet")
     guard(env)
     default_dep = "local.json" if env == "local" else "whitechain-sepolia.json"
@@ -94,6 +108,8 @@ def load() -> Config:
         ens_name=setting("SENFUND_ENS_NAME", ""),
         ens_resolver=setting("SENFUND_ENS_RESOLVER", ""),
         cre_payouts=setting("SENFUND_CRE_PAYOUTS", "0") == "1",
+        ens_network=ens_network,
+        wrapped_wbt=WHITECHAIN_SEPOLIA["wrapped_wbt"] if env == "testnet" else "",
     )
 
 

@@ -1,7 +1,7 @@
 import { accountMode, accountOrigin, bridgeHeaders, service } from "../../account-server.js";
 const invoiceId = "inv_[a-f0-9]{12}";
-const readRoute = new RegExp(`^(balance/0x[0-9a-fA-F]{40}|config|draft-invoice|profile|wallets|invoices(?:/${invoiceId}(?:/(?:receipt|evidence))?)?)$`);
-const writeRoute = new RegExp(`^(?:profile|draft-invoice|draft-note|wallets/(?:challenge|verify)|invoices(?:/${invoiceId}/(submit|verify|convert|payout|simulate-p2p-credit))?)$`);
+const readRoute = new RegExp(`^(balance/0x[0-9a-fA-F]{40}|config|treasury|draft-invoice|profile|wallets|invoices(?:/${invoiceId}(?:/(?:receipt|evidence))?)?)$`);
+const writeRoute = new RegExp(`^(?:profile|draft-invoice|draft-note|wallets/(?:challenge|verify)|invoices(?:/${invoiceId}/(submit|verify|convert|payout|cash-out|simulate-p2p-credit))?)$`);
 const scenarios = new Set(["success", "mudrex_unavailable", "timeout", "timeout_created", "fail"]);
 
 function json(data, status = 200) {
@@ -12,6 +12,7 @@ function invoiceView(invoice) {
   return {
     id: invoice.id,
     usd: invoice.usd,
+    asset: invoice.asset ?? "USDT",
     corridor: invoice.corridor,
     customer: invoice.data?.customer,
     description: invoice.data?.description,
@@ -45,10 +46,11 @@ function validateWrite(path, body) {
   if (path === "draft-invoice") return { text: text(body.text, 4000) };
   if (path === "draft-note") return { payer: text(body.payer, 100), amount: text(body.amount, 24), description: text(body.description, 200) };
   if (path === "invoices") {
-    const { usd, customer, description, corridor } = body;
-    if (corridor !== undefined && (typeof corridor !== "string" || !/^[A-Z]{2}$/.test(corridor))) throw new Error("Select a payout corridor.");
+    const { usd, customer, description, corridor, asset } = body;
+    if (asset !== undefined && asset !== "USDT" && asset !== "WBT") throw new Error("Choose USDT or WBT.");
+    if (corridor !== undefined && !["IN", "EU", "GB", "PH", "NG", "BR", "MX", "KE", "AE"].includes(corridor)) throw new Error("Select a payout corridor.");
     if (typeof usd !== "string" || !/^\d{1,22}(\.\d{1,2})?$/.test(usd) || !/[1-9]/.test(usd)) {
-      throw new Error("Enter a positive USD amount with up to two decimal places.");
+      throw new Error("Enter a positive invoice amount with up to two decimal places.");
     }
     if (typeof customer !== "string" || !customer.trim() || customer.trim().length > 100) {
       throw new Error("Enter the client name using up to 100 characters.");
@@ -56,13 +58,19 @@ function validateWrite(path, body) {
     if (typeof description !== "string" || !description.trim() || description.trim().length > 200) {
       throw new Error("Enter the service description using up to 200 characters.");
     }
-    return { usd, customer: customer.trim(), description: description.trim(), ...(corridor ? { corridor } : {}) };
+    return { usd, customer: customer.trim(), description: description.trim(), ...(corridor ? { corridor } : {}), ...(asset ? { asset } : {}) };
   }
   if (path.endsWith("/submit")) {
     if (typeof body.tx_hash !== "string" || !/^0x[\da-f]{64}$/i.test(body.tx_hash.trim())) {
       throw new Error("Enter the complete Whitechain payment transaction hash.");
     }
     return { tx_hash: body.tx_hash.trim() };
+  }
+  if (path.endsWith("/cash-out")) {
+    if (typeof body.corridor !== "string" || !/^[A-Z]{2}$/.test(body.corridor) || typeof body.confirm !== "boolean") {
+      throw new Error("Choose a payout currency and preview or confirm cash-out.");
+    }
+    return { corridor: body.corridor, confirm: body.confirm };
   }
   if (path.endsWith("/payout")) {
     if (!scenarios.has(body.scenario)) throw new Error("Select a payout simulation scenario.");
@@ -108,7 +116,7 @@ async function handle(request, context) {
       body,
       cache: "no-store",
       redirect: "error",
-      signal: AbortSignal.timeout(path.endsWith("/payout") ? 135_000 : 30_000),
+      signal: AbortSignal.timeout((path.endsWith("/payout") || path.endsWith("/cash-out")) ? 165_000 : 30_000),
     });
     if (upstream.ok && path.endsWith("/receipt")) {
       return new Response(upstream.body, {
@@ -124,7 +132,8 @@ async function handle(request, context) {
       return Response.json(payload, { headers: { "Cache-Control": "no-store", "Content-Disposition": `attachment; filename="senfund-evidence-${segments[1]}.json"` } });
     }
     if (!upstream.ok) return json({ error: payload.error || "The settlement service rejected this request." }, upstream.status);
-    if (path === "config" || path === "profile" || path.startsWith("draft-") || path.startsWith("balance/") || path.startsWith("wallets")) return json(payload);
+    if (path.endsWith("/cash-out") && !payload.id) return json(payload);
+    if (path === "config" || path === "treasury" || path === "profile" || path.startsWith("draft-") || path.startsWith("balance/") || path.startsWith("wallets")) return json(payload);
     if (Array.isArray(payload)) return json(payload.map(invoiceView));
     if (payload.invoice) {
       return json({ ...payload, invoice: invoiceView(payload.invoice) }, upstream.status);

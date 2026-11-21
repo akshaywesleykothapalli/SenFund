@@ -4,3 +4,9 @@ staging-settings:
   workflow-artifacts:
     workflow-path: ./main.ts
     config-path: ./config.json
+ens-mainnet-settings:
+  user-workflow:
+    workflow-name: senfund-payout-mainnet-ens-simulation
+  workflow-artifacts:
+    workflow-path: ./main.ts
+    config-path: ./config.json

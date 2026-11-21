@@ -4,14 +4,15 @@
 <body><main class="card">
   <p class="wordmark">SenFund</p>
   <h1>Invoice checkout</h1>
-  <p class="badge">Testnet checkout. Test USDT has no monetary value.</p>
+  <p class="badge">Whitechain Sepolia checkout. Test assets have no monetary value.</p>
   <div id="details"><p id="loading">Loading payment request…</p></div>
   <ol id="steps" aria-label="Payment steps">
     <li id="step-wallet">Connect wallet on Whitechain Sepolia</li>
+    <li id="step-wrap" hidden>Wrap WBT if needed</li>
     <li id="step-approve">Approve the exact test USDT amount</li>
     <li id="step-pay">Confirm the payment</li>
   </ol>
-  <p class="foot">Two wallet prompts: approve, then pay.</p>
+  <p id="wallet-prompts" class="foot">Two wallet prompts: approve, then pay.</p>
   <button id="pay" disabled>Connect wallet and pay</button>
   <ol id="log" aria-live="polite"></ol>
 </main><script src="app.js"></script></body></html>

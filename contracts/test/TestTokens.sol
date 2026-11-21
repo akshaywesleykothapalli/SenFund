@@ -35,3 +35,8 @@ contract ForgedEmitter {
         emit InvoiceSettled(invoiceId, d, msg.sender, merchant, recipient, token, amount);
     }
 }
+
+contract MockWrappedWBT is ERC20 {
+    constructor() ERC20("Mock Wrapped WBT", "WWBT") {}
+    function deposit() external payable { _mint(msg.sender, msg.value); }
+}

@@ -1,0 +1,23 @@
+{
+  "capturedAtUtc": "2026-11-07T05:08:14.434699+00:00",
+  "invoice": "inv_4fe69ac0f479",
+  "invoiceDigest": "0x61cd04d65d85cf34b98689ae4234a207cf2e8bd48794ca06f48711848d5a19ed",
+  "scenario": "mudrex_unavailable",
+  "route": "HOLD",
+  "decision": {
+    "run": "8321998a8daa4bd4a846e5a3d09e57b7",
+    "reason": "Prior payout outcome unknown",
+    "source": "Chainlink CRE CLI",
+    "simulated": true,
+    "policy": "senfund-payout-v2",
+    "checks": {
+      "finalizedEns": true,
+      "provider": true,
+      "providerSnapshot": true,
+      "receipt": true
+    }
+  },
+  "payout": "ON_HOLD",
+  "destinationRoute": 1,
+  "simulatedOrders": []
+}

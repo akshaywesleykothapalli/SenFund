@@ -1,21 +1,17 @@
 import { connection } from "next/server";
-import { accountMode } from "./account-server";
+import { accountMode, localAuthMode } from "./account-server";
 import { Motion, Pipeline, Reveal, Rise, Sketch } from "./motion";
 
 const TX = "0xca8d066095a407552697f77dc866ae939390712a87e38eabb12dc52efc342c62";
 const EXPLORER = "https://explorer.testnet.whitechain.io";
 
 const stages = [
-  ["Invoice", "Bill in USDT, share one link.", "invoice"],
-  ["Pay", "Client pays test USDT from a wallet.", "wallet"],
-  ["Verify", "Checked onchain. Receipt issued.", "receipt"],
-  ["Convert", "USDT quoted to the payout currency.", "convert"],
-  ["Pay out", "Local currency to your bank.", "payout"],
+  ["Invoice", "Set an amount and share a signed payment link.", "invoice"],
+  ["Pay", "The client opens the link and pays from their wallet.", "wallet"],
+  ["Verify", "SenFund verifies the onchain payment and issues a receipt.", "receipt"],
+  ["Convert", "For USDT invoices, preview the conversion to local currency.", "convert"],
+  ["Pay out", "CRE selects a route or holds an unresolved attempt.", "payout"],
 ];
-
-function Icon({ d }) {
-  return <svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
-}
 
 const icons = {
   invoice: "M7 3h7l4 4v14H7zM14 3v4h4M10 12h6M10 16h6",
@@ -25,21 +21,11 @@ const icons = {
   payout: "M12 3v12m0 0l-4-4m4 4l4-4M5 21h14",
 };
 
-function FlowCard({ i, className, eyebrow, title, sub, icon }) {
-  return (
-    <Rise i={i} className={"flowCard " + className}>
-      <span className="flowIcon"><Icon d={icon} /></span>
-      <span className="eyebrow">{eyebrow}</span>
-      <strong>{title}</strong>
-      <span className="flowSub">{sub}</span>
-    </Rise>
-  );
-}
-
 export default async function Page() {
   await connection();
   const accounts = accountMode();
-  const signIn = accounts ? "/api/auth/sign-in" : "#access";
+  const signIn = localAuthMode() ? "/login" : accounts ? "/api/auth/sign-in" : "#access";
+  const signUp = localAuthMode() ? "/login?mode=signup" : signIn;
   return (
     <Motion>
     <div className="site">
@@ -48,19 +34,19 @@ export default async function Page() {
           <a className="wordmark" href="/">SenFund</a>
           <nav className="headerNav" aria-label="Main">
             <a href="#how">How it works</a>
-            <a href="#about">About</a>
+            <a href="#payment-proof">Payment proof</a>
           </nav>
           <div className="headerActions">
             <a className="button plain" href={signIn}>Log in</a>
-            <a className="button primary" href={signIn}>Sign up</a>
+            <a className="button primary" href={signUp}>Sign up</a>
           </div>
           <details className="menu">
             <summary aria-label="Menu">Menu</summary>
             <nav aria-label="Mobile">
               <a href="#how">How it works</a>
-            <a href="#about">About</a>
+            <a href="#payment-proof">Payment proof</a>
               <a href={signIn}>Log in</a>
-              <a href={signIn}>Sign up</a>
+              <a href={signUp}>Sign up</a>
             </nav>
           </details>
         </div>
@@ -80,26 +66,17 @@ export default async function Page() {
           <Rise i={2} className="flow"><Sketch /></Rise>
         </section>
 
-        <Reveal id="how" className="band">
+        <section id="how" className="band">
           <div className="wrap">
             <p className="eyebrow center">How it works</p>
             <h2>Five steps</h2>
             <Pipeline steps={stages.map(([title, text, icon], i) => ({ title, text, d: icons[icon], sim: i >= 3 }))} />
+            <p id="payment-proof" className="paymentProof">
+              Payments settle on Whitechain Sepolia. Conversion and bank payout are simulated.
+              {" "}<a href={`${EXPLORER}/tx/${TX}`} target="_blank" rel="noopener">View verified USDT payment <span aria-hidden="true">↗</span></a>
+            </p>
           </div>
-        </Reveal>
-
-        <Reveal id="about" className="band">
-          <div className="wrap about">
-            <h2>Live on testnet</h2>
-            <ul className="facts">
-              <li><strong>3 USDT</strong> settled</li>
-              <li><strong>Block 12352312</strong> Whitechain Sepolia</li>
-              <li><strong>0</strong> real funds</li>
-            </ul>
-            <p><a href={`${EXPLORER}/tx/${TX}`} target="_blank" rel="noopener">View transaction</a></p>
-            <p className="note">Convert and pay out are simulated.</p>
-          </div>
-        </Reveal>
+        </section>
 
         <Reveal id="access" className="wrap closing">
           <h2>Start invoicing</h2>
@@ -121,7 +98,7 @@ export default async function Page() {
           <a className="wordmark" href="/">SenFund</a>
           <nav aria-label="Footer">
             <a href="#how">How it works</a>
-            <a href="#about">About</a>
+            <a href="#payment-proof">Payment proof</a>
             <a href="/workspace">Workspace</a>
           </nav>
           <p>Testnet only.</p>

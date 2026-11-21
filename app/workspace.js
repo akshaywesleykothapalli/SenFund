@@ -36,6 +36,7 @@ function NavIcon({ d }) {
   return <svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
 }
 const navIcons = {
+  overview: "M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z",
   invoices: "M7 3h7l4 4v14H7zM14 3v4h4M10 12h6M10 16h6",
   explorer: "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6",
   how: "M4 6h16M4 12h10M4 18h6",
@@ -54,14 +55,15 @@ function Status({ value }) {
 function advisor(invoice, payout) {
   const amt = `${payout.detail.amount} ${payout.detail.currency} (simulated)`;
   if (invoice.payout === "COMPLETED") return `Your payout of ${amt} is complete.`;
-  if (invoice.payout === "ON_HOLD" && payout.detail.route === "p2p") return `Your payout of ${amt} is going via Protected P2P fallback. Your USDT stays locked until your bank confirms the credit (simulated).`;
+  if (invoice.payout === "ON_HOLD" && payout.detail.route === "p2p") return `Your P2P payout of ${amt} is waiting for simulated bank credit.`;
   if (invoice.payout === "ON_HOLD") return `Your payout of ${amt} is on hold. The provider may have accepted the order, so we are checking before doing anything else.`;
   return "";
 }
 
 function nextStep(invoice, payout) {
   if (invoice.needsReview) return "Next: settlement review. Payout is paused.";
-  if (invoice.payment !== "PAID") return expired(invoice) ? "Checkout link expired. Create a new invoice." : invoice.payment === "SUBMITTED" ? "Next: verify the submitted payment." : "Waiting for the client to pay in test USDT.";
+  if (invoice.payment !== "PAID") return expired(invoice) ? "Checkout link expired. Create a new invoice." : invoice.payment === "SUBMITTED" ? "Next: verify the submitted payment." : `Waiting for the client to pay in test ${invoice.asset ?? "USDT"}.`;
+  if (invoice.asset === "WBT") return "Paid. Wrapped WBT was sent to the settlement recipient.";
   if (invoice.conversion !== "COMPLETED") return "Paid. Next: run the simulated conversion.";
   if (invoice.payout === "COMPLETED") return "Complete. Receipt and evidence pack are ready.";
   if (invoice.payout === "FAILED") return "Simulated payout failed. See the payout section.";
@@ -69,7 +71,8 @@ function nextStep(invoice, payout) {
   return "Converted. Next: run the simulated payout.";
 }
 
-function InvoiceForm({ busy, onCreate, corridors }) {
+function InvoiceForm({ busy, onCreate, corridors, assets }) {
+  const [asset, setAsset] = useState("USDT");
   const [note, setNote] = useState("");
   const [drafting, setDrafting] = useState(false);
   const [pasted, setPasted] = useState("");
@@ -91,7 +94,7 @@ function InvoiceForm({ busy, onCreate, corridors }) {
   }
   return <form className="invoiceForm" id="new-invoice" onSubmit={onCreate}>
     <div className="sectionTitle"><h2>New invoice</h2><p>Enter the client and service details to generate a signed payment link.</p></div>
-    {drafting && <fieldset className="fields">
+    {drafting && asset === "USDT" && <fieldset className="fields">
       <legend>Paste a message</legend>
       <label className="wide">Client message<textarea value={pasted} onChange={e => setPasted(e.target.value)} maxLength={4000} rows={3} /><small>Fills the form. Nothing is signed until you press Sign invoice.</small></label>
       <button type="button" onClick={fill} disabled={!pasted.trim()}>Fill from message</button>
@@ -106,13 +109,19 @@ function InvoiceForm({ busy, onCreate, corridors }) {
     </fieldset>
     <fieldset className="fields">
       <legend>Payment</legend>
-      <label>Amount (USDT)<span className="affix"><input name="usd" inputMode="decimal" placeholder="250.00" pattern="[0-9]+([.][0-9]{1,2})?" required /><b>USDT</b></span><small>Client pays in test USDT.</small></label>
-      <label>Payout corridor<select name="corridor" defaultValue="IN">
+      {assets?.includes("WBT") && <label>Payment asset<select name="asset" value={asset} onChange={event => {
+        setAsset(event.target.value);
+        event.currentTarget.form.usd.value = "";
+        setNote("");
+      }}><option value="USDT">USDT (test)</option><option value="WBT">WBT (test)</option></select></label>}
+      <label>Amount ({asset})<span className="affix"><input name="usd" inputMode="decimal" placeholder={asset === "WBT" ? "0.01" : "250.00"} pattern="[0-9]+([.][0-9]{1,2})?" required /><b>{asset}</b></span>
+        <small>{asset === "WBT" ? "Client can wrap WBT at checkout. You receive wrapped WBT." : "Client pays in test USDT."}</small></label>
+      {asset === "USDT" && <label>Payout corridor<select name="corridor" defaultValue="IN">
         {Object.entries(corridors || { IN: { currency: "INR" } }).map(([code, c]) => <option key={code} value={code}>{code} · {c.currency} (simulated)</option>)}
-      </select><small>Local currency you receive. No real money moves.</small></label>
+      </select><small>Local currency you receive. No real money moves.</small></label>}
     </fieldset>
     {note && <p className="note">{note}</p>}
-    <div className="formFooter"><p>Client pays in USDT. SenFund routes the payout.</p><button type="button" onClick={draft}>Draft note</button><button className="primary" disabled={busy}>{busy ? "Signing…" : "Sign invoice"}</button></div>
+    <div className="formFooter"><p>{asset === "WBT" ? "Wrapped WBT settles to your testnet wallet." : "Client pays in USDT. SenFund routes the simulated payout."}</p>{asset === "USDT" && <button type="button" onClick={draft}>Draft note</button>}<button className="primary" disabled={busy}>{busy ? "Signing…" : "Sign invoice"}</button></div>
   </form>;
 }
 
@@ -122,6 +131,8 @@ function InvoiceDetail({ invoice, config, busy, onAction, onClose, onCopy }) {
   const conversion = invoice.operations.find(operation => operation.stage === "conversion");
   const payout = invoice.operations.find(operation => operation.stage === "payout");
   const decision = invoice.operations.find(operation => operation.stage === "cre");
+  const cashOut = invoice.operations.some(operation => operation.stage === "cash-out");
+  const asset = invoice.asset ?? "USDT";
   const canSimulate = invoice.payment === "PAID" && !invoice.needsReview;
   const txLink = invoice.txHash && config.explorer && `${config.explorer}/tx/${invoice.txHash}`;
   return <section className="detail" aria-labelledby="invoice-title">
@@ -129,9 +140,9 @@ function InvoiceDetail({ invoice, config, busy, onAction, onClose, onCopy }) {
       <div><p className="reference">{invoice.id}</p><h2 id="invoice-title" tabIndex={-1}>{invoice.description}</h2><p className="muted">{invoice.customer}</p></div>
       <button className="plain" onClick={onClose}>Close details</button>
     </div>
-    <p className={`nextStep ${invoice.payout === "ON_HOLD" && payout?.detail.route !== "p2p" ? "hold" : ""}`} role="status">{nextStep(invoice, payout)}</p>
+    <p className={`nextStep ${invoice.payout === "ON_HOLD" && payout?.detail.route !== "p2p" ? "hold" : ""}`} role="status">{cashOut && invoice.payout === "NOT_STARTED" ? "Resume this cash-out from Wallet." : nextStep(invoice, payout)}</p>
     <dl className="facts">
-      <div><dt>Amount</dt><dd className="amount">${invoice.usd} USDT</dd></div>
+      <div><dt>Amount</dt><dd className="amount">{invoice.usd} {asset}</dd></div>
       <div><dt>Settlement</dt><dd>{expired(invoice) ? <span className="state bad">Expired</span> : <Status value={invoice.payment} />}</dd></div>
       {invoice.expiresAt && <div><dt>Checkout expires</dt><dd>{date(invoice.expiresAt)}</dd></div>}
       <div><dt>Created</dt><dd>{date(invoice.createdAt)}</dd></div>
@@ -149,7 +160,7 @@ function InvoiceDetail({ invoice, config, busy, onAction, onClose, onCopy }) {
     </div>
     {invoice.needsReview && <p className="alert">Payment review required. Payout is paused while the settlement is reconciled.</p>}
     <div className="stageGrid">
-      <section><h3>Onchain settlement</h3><p className="caption">Test USDT on Whitechain</p><Status value={invoice.payment} />
+      <section><h3>Onchain settlement</h3><p className="caption">Test {asset === "WBT" ? "wrapped WBT" : "USDT"} on Whitechain</p><Status value={invoice.payment} />
         {invoice.receipt && <p>Block <code>{invoice.receipt.block}</code></p>}
         {invoice.payment === "SUBMITTED" && <button disabled={busy} onClick={() => onAction("verify", {})}>Verify payment</button>}
         {invoice.payment !== "PAID" && <form className="hashForm" onSubmit={event => { event.preventDefault(); onAction("submit", { tx_hash: hash }); }}>
@@ -157,22 +168,30 @@ function InvoiceDetail({ invoice, config, busy, onAction, onClose, onCopy }) {
           <button disabled={busy}>Submit hash</button>
         </form>}
       </section>
-      <section><h3>Simulated conversion</h3><p className="caption">Simulated, no funds move</p><Status value={invoice.conversion} />
+      {asset === "USDT" && <><section><h3>Simulated conversion</h3><p className="caption">Simulated, no funds move</p><Status value={invoice.conversion} />
         {conversion && <p>{conversion.detail.net_usd} USD net after a {conversion.detail.fee_usd} USD simulated fee.</p>}
         {canSimulate && invoice.conversion !== "COMPLETED" &&
           <button disabled={busy} onClick={() => onAction("convert", {})}>Simulate conversion</button>}
       </section>
       <section><h3>Simulated payout</h3><p className="caption">Simulated, no funds move</p><Status value={invoice.payout} />
         {decision && <p>{decision.detail.source}: {decision.detail.reason}</p>}
+        {decision?.detail.ens && <p>Finalized ENSv2 recipient matched for <code>{decision.detail.ens.name}</code> on {decision.detail.ens.network ?? (decision.detail.ens.chainId === 1 ? "Ethereum mainnet" : "Ethereum Sepolia")}.</p>}
+        {decision?.detail.ccip && <details>
+          <summary>CCIP approval (Chainlink Local)</summary>
+          <p>Receiver route {decision.detail.ccip.beforeRoute} → {decision.detail.ccip.afterRoute}</p>
+          <p>CRE run <code>{decision.detail.run}</code></p>
+          <p style={{overflowWrap: "anywhere"}}>CCIP message <code>{decision.detail.ccip.messageId}</code></p>
+        </details>}
         {payout && <p>{payout.detail.route === "p2p" ? "Protected P2P fallback" : payout.detail.route === "mudrex" ? "Mudrex" : payout.detail.route === "eu_offramp" ? "MiCA off-ramp" : payout.detail.route === "local_offramp" ? "Licensed local off-ramp" : "Provider simulation"}{payout.detail.amount != null ? `, ${payout.detail.amount} ${payout.detail.currency} simulated` : ""}{payout.reference && <>, reference <code>{payout.reference}</code></>}</p>}
-        {canSimulate && invoice.conversion === "COMPLETED" && !["COMPLETED", "FAILED"].includes(invoice.payout) &&
+        {canSimulate && !cashOut && invoice.conversion === "COMPLETED" && !["COMPLETED", "FAILED"].includes(invoice.payout) &&
           <div className="hashForm"><label>Scenario<select value={scenario} onChange={event => setScenario(event.target.value)}>
             {scenarios.map(([value, text]) => <option value={value} key={value}>{text}</option>)}
-          </select></label><button disabled={busy} onClick={() => onAction("payout", { scenario })}>{config.crePayouts ? "Run CRE simulation" : "Simulate payout"}</button></div>}
+          </select></label><button disabled={busy} onClick={() => onAction("payout", { scenario })}>{config.localCcip ? "Run CRE + CCIP simulation" : config.crePayouts ? "Run CRE simulation" : "Simulate payout"}</button></div>}
         {payout && <p className={`advisor ${invoice.payout === "ON_HOLD" ? (payout.detail.route === "p2p" ? "credit" : "hold") : ""}`}>{advisor(invoice, payout)}</p>}
         {canSimulate && invoice.payout === "ON_HOLD" && payout?.detail.route === "p2p" && payout.reference &&
           <button disabled={busy} onClick={() => onAction("simulate-p2p-credit", {})}>Simulate bank credit</button>}
       </section>
+      </>}
     </div>
     {!!invoice.history.length && <section className="history"><h3>Activity</h3><ol>
       {[...invoice.history].reverse().map((entry, index) => <li key={index}>
@@ -183,9 +202,64 @@ function InvoiceDetail({ invoice, config, busy, onAction, onClose, onCopy }) {
   </section>;
 }
 
-function WalletView({ wallets, corridors, disabled, onLink, canVerify, accountsEnabled }) {
+function CashOut({ invoices, corridors, onOrder }) {
+  const [invoiceId, setInvoiceId] = useState("");
+  const [currency, setCurrency] = useState("");
+  const [quote, setQuote] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const eligible = invoices.filter(invoice =>
+    invoice.payment === "PAID" && (invoice.asset ?? "USDT") === "USDT" &&
+    invoice.payout === "NOT_STARTED" && !invoice.needsReview);
+  const invoice = eligible.find(item => item.id === invoiceId);
+  const locked = invoice?.operations.find(operation => operation.stage === "cash-out")?.detail.corridor;
+  const corridor = locked ?? currency;
+
+  async function request(confirm) {
+    if (!invoice || !corridor || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api(`invoices/${invoice.id}/cash-out`, { corridor, confirm });
+      if (confirm) await onOrder(result);
+      else setQuote(result);
+    } catch (reason) {
+      setError(reason.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <form className="invoiceForm" onSubmit={event => { event.preventDefault(); request(false); }}>
+    <div className="sectionTitle"><h2>Cash out USDT to a bank</h2><p>Simulate a P2P payout for the full amount of a verified invoice. No funds move.</p></div>
+    {eligible.length ? <>
+      <fieldset className="fields" disabled={busy}>
+        <label>Paid invoice<select required value={invoice ? invoiceId : ""} onChange={event => {
+          setInvoiceId(event.target.value); setQuote(null); setError("");
+        }}>
+          <option value="">Choose an invoice</option>
+          {eligible.map(item => <option key={item.id} value={item.id}>{item.customer || item.id} · {item.usd} USDT</option>)}
+        </select></label>
+        <label>Payout currency<select required disabled={!!locked} value={corridor} onChange={event => {
+          setCurrency(event.target.value); setQuote(null); setError("");
+        }}>
+          <option value="">Choose a currency</option>
+          {Object.entries(corridors || {}).map(([code, c]) => <option key={code} value={code}>{c.currency} · {code}</option>)}
+        </select></label>
+      </fieldset>
+      {error && <p role="alert" className="alert">{error}</p>}
+      {quote && <p className="note" role="status"><strong>Estimated bank credit {quote.amount} {quote.currency}</strong> for {quote.inputUsdt} USDT. Includes a {quote.conversionFeeUsd} USD conversion fee and a {quote.fee} {quote.currency} payout fee.</p>}
+      <div className="actions">
+        <button type="submit" disabled={!invoice || !corridor || busy}>Get simulated quote</button>
+        {quote && <button type="button" className="primary" disabled={!invoice || busy} onClick={() => request(true)}>Confirm simulated P2P order</button>}
+        {busy && <span role="status">Checking cash-out…</span>}
+      </div>
+    </> : <p className="muted">Pay and verify a new USDT invoice to cash out. Invoices with an existing payout are excluded.</p>}
+  </form>;
+}
+
+function WalletView({ wallets, invoices, corridors, onOrder, canCashOut, disabled, onLink, canVerify, accountsEnabled }) {
   const [balances, setBalances] = useState({});
-  const [quote, setQuote] = useState("");
   const [connected, setConnected] = useState([]);
   const [chain, setChain] = useState("");
   const [note, setNote] = useState("");
@@ -221,15 +295,6 @@ function WalletView({ wallets, corridors, disabled, onLink, canVerify, accountsE
   }
   const short = a => a.slice(0, 6) + "…" + a.slice(-4);
   const purposes = a => wallets.filter(w => w.address.toLowerCase() === a).map(w => w.purpose).join(", ");
-  const list = Object.entries(corridors || {});
-  function withdraw(event) {
-    event.preventDefault();
-    const f = new FormData(event.currentTarget), c = corridors?.[f.get("corridor")];
-    const amount = Number(f.get("amount"));
-    if (!c || !(amount > 0)) return setQuote("Enter an amount and pick a corridor.");
-    const out = amount * Number(c.rate) - Number(c.fee);
-    setQuote(out > 0 ? `You would receive about ${out.toFixed(2)} ${c.currency}. Simulated — no money moves.` : "Amount is below the corridor fee.");
-  }
   return <>
     <header className="heading"><div><h1>Wallet</h1><p>Testnet balances for your connected and verified wallets.</p></div>
       <div className="actions">
@@ -249,18 +314,10 @@ function WalletView({ wallets, corridors, disabled, onLink, canVerify, accountsE
       <div className="sectionTitle"><h2>Balances</h2><p>Whitechain Sepolia testnet. Read only.</p></div>
       {addresses.length ? <ul className="balanceList">{addresses.map(a => { const b = balances[a]; return <li key={a}>
         <div><code title={a}>{short(a)}</code> <span className="muted">{purposes(a) || "connected, not verified"}</span></div>
-        {!b ? <span className="muted">Loading…</span> : b.error ? <span className="muted">{b.error}</span> : <span className="balanceAmounts"><b>{b.native}</b> WHITE <b>{b.token}</b> USDT</span>}
+        {!b ? <span className="muted">Loading…</span> : b.error ? <span className="muted">{b.error}</span> : <span className="balanceAmounts"><b>{b.native}</b> WBT <b>{b.token}</b> USDT {b.tokens?.WWBT && <><b>{b.tokens.WWBT}</b> WWBT</>}</span>}
       </li>; })}</ul> : <p className="muted">No wallet connected. Connect a browser wallet to see balances.</p>}
     </section>
-    <form className="invoiceForm" onSubmit={withdraw}>
-      <div className="sectionTitle"><h2>Withdraw to bank</h2><p>Simulated — no money moves. Nothing is signed.</p></div>
-      <fieldset className="fields">
-        <label>Amount (USDT)<span className="affix"><input name="amount" inputMode="decimal" placeholder="100.00" required /><b>USDT</b></span></label>
-        <label>Corridor<select name="corridor" disabled={!list.length}>{!list.length && <option>Loading corridors…</option>}{list.map(([code, c]) => <option key={code} value={code}>{code} · {c.currency} (simulated)</option>)}</select></label>
-      </fieldset>
-      <div className="actions"><button type="submit">Get simulated quote</button></div>
-      <p role="status">{quote}</p>
-    </form>
+    {canCashOut && <CashOut invoices={invoices} corridors={corridors} onOrder={onOrder} />}
   </>;
 }
 
@@ -278,6 +335,81 @@ function Wallets({ wallets, disabled, onLink }) {
   </section>;
 }
 
+const balanceText = amount => amount.includes(".") ? amount.replace(/0+$/, "").replace(/\.$/, "") : amount;
+
+function statement(payments) {
+  const cell = value => {
+    const text = String(value ?? "");
+    const safe = /^[\s]*[=+@-]|^[\t\r\n]/.test(text) ? "'" + text : text;
+    return '"' + safe.replaceAll('"', '""') + '"';
+  };
+  const rows = [["Verified at (UTC)", "Invoice", "Client on invoice", "Paying wallet", "Receiving wallet", "Asset", "Amount", "Block", "Transaction"],
+    ...payments.map(row => [
+      row.verifiedAt ? new Date(row.verifiedAt * 1000).toISOString() : "", row.invoice, row.customer, row.payer,
+      row.recipient, row.asset, row.amount, row.block, row.txHash,
+    ])];
+  const url = URL.createObjectURL(new Blob([rows.map(row => row.map(cell).join(",")).join("\r\n")], {type: "text/csv;charset=utf-8"}));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "senfund-payment-statement.csv";
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function MerchantOverview({ onInvoices, onCashOut }) {
+  const [wallet, setWallet] = useState(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try { setWallet(await api("treasury")); }
+    catch (reason) { setError(reason.message); }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => { refresh(); }, [refresh]);
+
+  return <>
+    <header className="heading"><div><h1>Dashboard</h1><p>Track what arrived in your SenFund receiving wallet.</p></div>
+      <div className="actions"><button disabled={loading} onClick={refresh}>{loading ? "Checking…" : "Refresh"}</button>
+        <button onClick={onCashOut}>Cash out USDT</button>
+        <button className="primary" onClick={onInvoices}>View invoices</button></div></header>
+    {error && <p role="alert" className="alert">{error}</p>}
+    {wallet && <>
+      <section className="invoiceForm treasuryBalances" aria-labelledby="receiving-wallet-title">
+        <div className="sectionTitle">
+          <h2 id="receiving-wallet-title">{wallet.ensName || "Receiving wallet"}</h2>
+          <p>Whitechain Sepolia · chain {wallet.chainId}</p>
+          <code>{wallet.address}</code>
+        </div>
+        <div className="treasuryMetrics">
+          {Object.entries({...wallet.tokens, WBT: wallet.native}).map(([asset, amount]) =>
+            <div key={asset}><span className="muted">Test {asset} balance</span><strong>{balanceText(amount)} {asset}</strong>
+              {wallet.received[asset] !== undefined && <small>{wallet.received[asset]} received via SenFund</small>}</div>)}
+        </div>
+      </section>
+      <section className="invoiceForm treasuryLedger" aria-labelledby="ledger-title">
+        <div className="detailTop">
+          <div className="sectionTitle"><h2 id="ledger-title">Verified payments</h2>
+            <p>Confirmed SenFund invoices paid to this wallet. Client names come from your invoices.</p></div>
+          <button onClick={() => statement(wallet.payments)} disabled={!wallet.payments.length}>Download CSV statement</button>
+        </div>
+        {wallet.payments.length ? <div className="treasuryTable"><table>
+          <thead><tr><th scope="col">From</th><th scope="col">Received</th><th scope="col">Verified</th><th scope="col">Proof</th></tr></thead>
+          <tbody>{wallet.payments.map(row => <tr key={row.invoice}>
+            <td><strong>{row.customer || "Client wallet"}</strong><br /><code title={row.payer}>{short(row.payer)}</code></td>
+            <td><strong>{row.amount} {row.asset}</strong></td>
+            <td>{row.verifiedAt ? date(row.verifiedAt) : `Block ${row.block}`}</td>
+            <td>{wallet.explorer && <a href={`${wallet.explorer}/tx/${row.txHash}`} target="_blank" rel="noreferrer">Transaction</a>}
+              {" · "}<a href={`/api/invoices/${row.invoice}/receipt`} download>Receipt</a></td>
+          </tr>)}</tbody>
+        </table></div> : <p className="muted">Verified invoice payments will appear here.</p>}
+      </section>
+    </>}
+  </>;
+}
+
 export default function Workspace({ accountsEnabled }) {
   const [profile, setProfile] = useState(null);
   const [wallets, setWallets] = useState([]);
@@ -286,7 +418,7 @@ export default function Workspace({ accountsEnabled }) {
   const [invoices, setInvoices] = useState([]);
   const [selected, setSelected] = useState(null);
   const [showForm, setShowForm] = useState(false);
-  const [view, setView] = useState("invoices");
+  const [view, setView] = useState("overview");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
@@ -390,11 +522,12 @@ export default function Workspace({ accountsEnabled }) {
   if (signedOut) return <main><header className="heading"><div><h1>SenFund</h1><p>Sign in to your merchant workspace.</p></div>
     <a className="button primary" href="/api/auth/sign-in">Sign in or register</a></header></main>;
 
+  const showTreasury = !accountsEnabled || profile?.canIssue;
   return <div className="shell">
     <aside className="rail" aria-label="Workspace">
       <a className="brand" href="/">SenFund<span>Merchant workspace</span></a>
       <p className="railNavLabel">Workspace</p>
-      <nav>{[["invoices", "Invoices"], ["wallet", "Wallet"]].map(([id, text]) =>
+      <nav>{[...(showTreasury ? [["overview", "Dashboard"]] : []), ["invoices", "Invoices"], ["wallet", "Wallet"]].map(([id, text]) =>
         <a key={id} href={"#" + id} aria-current={view === id ? "page" : undefined} onClick={event => { event.preventDefault(); setView(id); setError(""); setStatus(""); }}><NavIcon d={navIcons[id]} />{text}</a>)}
         <p className="railNavLabel">Resources</p>
         {config?.explorer && <a href={config.token ? `${config.explorer}/address/${config.token}` : config.explorer} target="_blank" rel="noreferrer"><NavIcon d={navIcons.explorer} />Block explorer</a>}
@@ -409,24 +542,33 @@ export default function Workspace({ accountsEnabled }) {
               <button key={id} type="button" onClick={event => { event.currentTarget.closest("details").open = false; setView(id); setError(""); setStatus(""); }}>{text}</button>)}
             <button type="button" disabled={!!busy} onClick={() => run("sign-out", async () => { await api("auth/sign-out", {}); location.reload(); })}>Sign out</button>
           </div></details>}</span></div>
-      {view === "wallet" ? <WalletView wallets={wallets} corridors={config?.corridors} disabled={!!busy} onLink={linkWallet} canVerify={!!profile} accountsEnabled={accountsEnabled} /> : view === "invoices" ? <>
+      {view === "overview" && showTreasury ? <MerchantOverview onInvoices={() => setView("invoices")} onCashOut={() => setView("wallet")} /> : view === "wallet" ? <WalletView
+        wallets={wallets} invoices={invoices} corridors={config?.corridors} canCashOut={showTreasury}
+        disabled={!!busy} onLink={linkWallet} canVerify={!!profile} accountsEnabled={accountsEnabled}
+        onOrder={async invoice => {
+          setSelected(invoice);
+          setError("");
+          setStatus(invoice.payout === "NOT_STARTED" ? "Cash-out is waiting for payout approval." : "Simulated P2P order updated.");
+          setView("invoices");
+          await refresh();
+        }} /> : view === "invoices" || view === "overview" ? <>
       <header className="heading">
-        <div><h1>Invoices</h1><p>Issue USDT invoices and track payment, conversion and payout.</p></div>
+        <div><h1>Invoices</h1><p>Issue invoices and track settlement and simulated payouts.</p></div>
         <button className="primary" disabled={!config || !!busy || (accountsEnabled && !profile?.canIssue)} onClick={() => setShowForm(!showForm)}>{showForm ? "Close form" : "New invoice"}</button>
       </header>
-      <p className="notice">Clients pay in test USDT. Conversion and payout are simulations.</p>
+      <p className="notice">Clients pay in the test asset selected when the invoice was signed.</p>
       {error && <p role="alert" className="alert">{error}</p>}
       <div className="feedback" role="status">{status}</div>
       {config && !loading && invoices.length === 0 && !showForm && <section className="onboarding" aria-labelledby="onboarding-title">
         <h2 id="onboarding-title">Get started</h2>
         <ol>
-          <li>Payments settle in test USDT. Conversion and payout are simulated, so no real money moves.</li>
+          <li>USDT invoices support simulated conversion and payout. WBT invoices settle in wrapped WBT.</li>
           <li>Pick a payout corridor (simulated): India, Europe, UK, Mexico, Kenya, UAE and more. Each has a protected fallback.</li>
           <li>Create your first invoice and share its payment link.</li>
         </ol>
         <button className="primary" disabled={!!busy || (accountsEnabled && !profile?.canIssue)} onClick={() => setShowForm(true)}>Create first invoice</button>
       </section>}
-      {showForm && <InvoiceForm busy={!!busy} onCreate={create} corridors={config?.corridors} />}
+      {showForm && <InvoiceForm busy={!!busy} onCreate={create} corridors={config?.corridors} assets={config?.paymentAssets} />}
       <div className={selected ? "board open" : "board"}>
       <section className="register" aria-labelledby="register-title">
         <div className="registerTop"><div><h2 id="register-title">Invoice register</h2>{config && <p>{invoices.length} {invoices.length === 1 ? "invoice" : "invoices"}</p>}</div><button disabled={!!busy || loading} onClick={reload}>{busy === "refresh" ? "Refreshing…" : "Refresh"}</button></div>
@@ -437,8 +579,8 @@ export default function Workspace({ accountsEnabled }) {
             <thead><tr><th scope="col">Invoice</th><th scope="col">Amount</th><th scope="col">Settlement</th><th scope="col">Payout simulation</th><th scope="col">Details</th></tr></thead>
             <tbody>{invoices.map(invoice => <tr key={invoice.id} className={selected?.id === invoice.id ? "selected" : undefined}>
               <th scope="row"><strong>{invoice.customer || invoice.id}</strong><code>{invoice.id}</code></th>
-              <td className="amount" data-label="Amount">${invoice.usd} <span>USDT</span></td>
-              <td data-label="Settlement">{expired(invoice) ? <span className="state bad">Expired</span> : <Status value={invoice.payment} />}</td><td data-label="Payout simulation"><Status value={invoice.payout} /></td>
+              <td className="amount" data-label="Amount">{invoice.usd} <span>{invoice.asset ?? "USDT"}</span></td>
+              <td data-label="Settlement">{expired(invoice) ? <span className="state bad">Expired</span> : <Status value={invoice.payment} />}</td><td data-label="Payout simulation">{invoice.asset === "WBT" ? "Wallet settlement" : <Status value={invoice.payout} />}</td>
               <td><button className="plain" data-opens="1" disabled={!!busy} onClick={() => run("open", () => open(invoice.id))} aria-label={`Open invoice ${invoice.id}`}>Open details</button></td>
             </tr>)}</tbody>
           </table></div>}

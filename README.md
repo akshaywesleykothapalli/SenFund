@@ -1,6 +1,6 @@
 # SenFund
 
-SenFund lets you send USD invoices that customers pay in test USDT on Whitechain Sepolia (chain 1874). Each payment is verified onchain. The USD conversion and the INR payout are **simulated**. Mainnet and live payouts are disabled.
+SenFund lets you send invoices in test USDT or test WBT on Whitechain Sepolia (chain 1874). Each payment is verified onchain. USDT conversion and fiat payout are **simulated**. WBT invoices settle directly to the invoice recipient as wrapped WBT. Mainnet settlement and live payouts are disabled.
 
 Why onchain settlement: the payment receipt is a public, final event anyone can verify, so the merchant never has to trust a processor's word that a customer paid.
 
@@ -32,6 +32,10 @@ The checkout (:8702) is static and reads the chain directly, so payers can still
 5. Issue a new invoice, pay with the browser wallet and record the explorer transaction. For a command-line smoke test, use `.venv/bin/python scripts/pay.py <invoice-id>`.
 
 Existing deployment metadata without a domain name uses its original signing domain, and older environment variables and default database paths are still recognized. New deployments use the SenFund domain. Use a fresh database when intentionally switching to a new deployment, so stored invoices stay associated with the contract that signed them.
+
+## Choose the invoice payment asset
+
+Choose **USDT** to demo the simulated conversion and Chainlink payout. The client wallet needs official test USDT plus test WBT for network fees. Choose **WBT** to bill in WBT units. Checkout asks the payer to wrap any shortfall into WWBT before approval and settlement. Existing WWBT can be used directly. The invoice records the chosen asset in the signed request. Use a client wallet different from the receiving wallet.
 
 ## Verified demo
 
@@ -107,3 +111,9 @@ The [SRS implementation tracker](docs/SRS_IMPLEMENTATION.md) describes the optio
 - The Wallet view shows testnet balances from `GET /api/balance/<address>` (400 for a bad address, 502 if the RPC fails).
 - "Withdraw to bank" gives a quote only (amount × rate − fee). It is labelled "Simulated — no money moves".
 - Clients pay in test USDT. Corridors come from `/api/config`: IN, EU, MX, KE, AE and more. Conversion and payout stay simulated.
+
+## Share checkout outside your network
+
+Serve only the static `checkout/` directory on port 8702 through an HTTPS tunnel or static host. Set `SENFUND_CHECKOUT_URL` to that public address and restart the backend. Copy a payment link again from the invoice to get the updated origin. The signed request travels in the link fragment. The merchant workspace and its APIs stay on loopback. A temporary tunnel URL lasts only while the tunnel is up.
+
+Enable `SENFUND_LOCAL_AUTH=1` with a random bridge secret, a seeded admin password hash and a loopback app origin. Local accounts use salted scrypt hashes in SQLite and require no email verification. The admin is the configured invoice-signing operator and can view the existing local invoice register. The Dashboard shows live balances for the receiving wallet and a CSV statement of verified SenFund payments to that address.

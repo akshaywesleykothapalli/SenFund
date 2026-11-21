@@ -1,6 +1,8 @@
 // SenFund static checkout: no backend, no build step. Request arrives in the URL fragment (#req=base64url JSON).
 const SETTLE_SELECTOR = "0x3414c14f";  // settle(bytes32,address,address,address,uint256,uint256,bytes)
 const CHECK_SELECTOR = "0xd6591e18";
+const BALANCE_SELECTOR = "0x70a08231";
+const DEPOSIT_SELECTOR = "0xd0e30db0"; // deposit()
 const APPROVE_SELECTOR = "0x095ea7b3"; // approve(address,uint256)
 const SETTLED_TOPIC = "0x85698fa15ef6458f171e64e809e549b751ab3db8a7c7e78b51744c5983a8b8d5";
 const CHAINS = {
@@ -33,9 +35,14 @@ function encodeRequest(r, selector) {
 const address = v => typeof v === "string" && /^0x[0-9a-f]{40}$/i.test(v);
 const same = (a, b) => address(a) && address(b) && a.toLowerCase() === b.toLowerCase();
 
+function paymentAsset(r, trust) {
+  if (same(r.token, trust.token)) return {symbol: "USDT", decimals: trust.tokenDecimals, wrap: false};
+  if (trust.chainId === 1874 && same(r.token, trust.wrappedWbt)) return {symbol: "WWBT", decimals: 18, wrap: true};
+}
+
 function checkTrustedRequest(r, trust, allowExpired) {
   if (r.chainId !== trust.chainId || !same(r.contract, trust.contract) ||
-      !same(r.token, trust.token) || !same(r.merchant, trust.merchant) ||
+      !paymentAsset(r, trust) || !same(r.merchant, trust.merchant) ||
       !address(r.recipient) || !/^0x[0-9a-f]{64}$/i.test(r.invoiceId) ||
       !/^0x[0-9a-f]{130}$/i.test(r.signature) || !/^[0-9]+$/.test(r.amount) ||
       BigInt(r.amount) <= 0n || BigInt(r.amount) >= (1n << 256n) ||
@@ -120,9 +127,11 @@ async function waitReceipt(eth, hash) {
 
 async function pay(r, trust) {
   checkTrustedRequest(r, trust);
+  const asset = paymentAsset(r, trust);
   const eth = window.ethereum;
-  if (!eth) throw new Error("No browser wallet found. Install a wallet and add Whitechain Sepolia.");
+  if (!eth) throw new Error("Open this link in the browser profile where MetaMask is installed, then select Whitechain Sepolia.");
   const [from] = await eth.request({ method: "eth_requestAccounts" });
+  if (same(from, r.recipient)) throw new Error("Choose a client wallet different from the invoice’s receiving wallet.");
   const want = "0x" + Number(r.chainId).toString(16);
   if ((await eth.request({ method: "eth_chainId" })) !== want) {
     log("Switching wallet to chain " + r.chainId + "…");
@@ -135,9 +144,27 @@ async function pay(r, trust) {
     if ((await eth.request({ method: "eth_chainId" })) !== want) throw new Error("Wallet is on the wrong network.");
   }
   await preflight(eth, from, r, trust);
-  step("wallet", "done"); step("approve", "active");
-  log("Approve the exact amount of test USDT…");
-  const a = await eth.request({ method: "eth_sendTransaction", params: [{ from, to: trust.token, data: APPROVE_SELECTOR + word(trust.contract) + uint(r.amount) }] });
+  step("wallet", "done");
+  const balance = readWord((await eth.request({method: "eth_call",
+    params: [{to: r.token, data: BALANCE_SELECTOR + word(from)}, "latest"]})).slice(2), 0);
+  const amount = BigInt(r.amount);
+  if (balance < amount) {
+    if (!asset.wrap) throw new Error("Insufficient test USDT on Whitechain Sepolia. Test WBT covers network fees.");
+    const shortfall = amount - balance;
+    const native = BigInt(await eth.request({method: "eth_getBalance", params: [from, "latest"]}));
+    if (native <= shortfall) throw new Error("Insufficient test WBT on Whitechain Sepolia. Keep extra WBT for network fees.");
+    step("wrap", "active");
+    log("Confirm wrapping the WBT needed for this invoice. It stays in your wallet until you pay.");
+    const wrap = await eth.request({method: "eth_sendTransaction", params: [
+      {from, to: r.token, data: DEPOSIT_SELECTOR, value: "0x" + shortfall.toString(16)},
+    ]});
+    if ((await waitReceipt(eth, wrap)).status !== "0x1") throw new Error("Wrapping WBT failed.");
+    await preflight(eth, from, r, trust);
+  }
+  if (asset.wrap) step("wrap", "done");
+  step("approve", "active");
+  log("Approve the exact amount of test " + asset.symbol + "…");
+  const a = await eth.request({ method: "eth_sendTransaction", params: [{ from, to: r.token, data: APPROVE_SELECTOR + word(trust.contract) + uint(r.amount) }] });
   if ((await waitReceipt(eth, a)).status !== "0x1") throw new Error("Approval failed.");
   const digest = await preflight(eth, from, r, trust);
   step("approve", "done"); step("pay", "active");
@@ -174,13 +201,14 @@ async function init() {
   const trust = await response.json();
   // Show expired request details for reference without treating them as verified payment instructions.
   checkTrustedRequest(r, trust, true);
+  const asset = paymentAsset(r, trust);
   const units = BigInt(r.amount);
-  const scale = 10n ** BigInt(trust.tokenDecimals);
-  const fraction = (units % scale).toString().padStart(trust.tokenDecimals, "0").replace(/0+$/, "");
+  const scale = 10n ** BigInt(asset.decimals);
+  const fraction = (units % scale).toString().padStart(asset.decimals, "0").replace(/0+$/, "");
   const amount = (units / scale).toString() + (fraction ? "." + fraction : "");
   $("details").textContent = "";
   const dl = document.createElement("dl");
-  for (const [k, v] of [["Merchant", trust.ens?.name ?? trust.merchant], ["Amount", amount + " USDT (test)"],
+  for (const [k, v] of [["Merchant", trust.ens?.name ?? trust.merchant], ["Amount", amount + (asset.wrap ? " WBT (test, settles as WWBT)" : " USDT (test)")],
       ["Chain", (CHAINS[trust.chainId]?.chainName ?? "Local dev") + " (" + trust.chainId + ")"],
       ["Pays to", r.recipient], ["Expires", new Date(r.expiry * 1000).toLocaleString()]]) {
     const dt = document.createElement("dt"); dt.textContent = k; const dd = document.createElement("dd"); dd.textContent = v; dl.append(dt, dd);
@@ -189,6 +217,15 @@ async function init() {
   if (Date.now() / 1000 > r.expiry)
     throw new Error("This invoice expired on " + new Date(r.expiry * 1000).toLocaleString() + ". These details are for reference only. Ask the merchant for a new link.");
   await checkRecipient(r, trust);
+  if (trust.ens) {
+    const network = trust.ens.chainId === 1 ? "Ethereum mainnet" : "Ethereum Sepolia";
+    log("ENSv2 verified on " + network + ": " + trust.ens.name + " matches this invoice’s recipient.", "ok");
+  }
+  if (asset.wrap) {
+    $("step-wrap").hidden = false;
+    $("step-approve").textContent = "Approve the exact test WWBT amount";
+    $("wallet-prompts").textContent = "Wrap WBT if needed, then approve WWBT and confirm payment.";
+  }
   $("pay").disabled = false;
   $("pay").onclick = () => {
     $("pay").disabled = true;

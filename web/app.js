@@ -10,7 +10,7 @@ let cfg;
 
 async function refresh() {
   const list = await api("/invoices");
-  $("#rows").innerHTML = list.map(i => `<tr><td><code>${esc(i.id)}</code></td><td>${esc(i.usd)}</td><td>${esc(i.payment)}</td>
+  $("#rows").innerHTML = list.map(i => `<tr><td><code>${esc(i.id)}</code></td><td>${esc(i.usd)} ${esc(i.asset || "USDT")}</td><td>${esc(i.payment)}</td>
     <td><span class="sim">SIM</span> ${esc(i.conversion)}</td><td><span class="sim">SIM</span> ${esc(i.payout)}${i.needs_review ? " ⚠ review" : ""}</td>
     <td><button data-id="${esc(i.id)}">Open</button></td></tr>`).join("");
 }
@@ -27,10 +27,10 @@ async function show(id) {
   const awaitingCredit = quote.route === "p2p" && payout.external_id && i.payout === "ON_HOLD" &&
     i.payment === "PAID" && !i.needs_review;
   d.innerHTML = `<h2>Invoice ${esc(i.id)}</h2>
-    <p>${esc(i.usd)} USD · payment <b>${esc(i.payment)}</b> · tx ${tx}</p>
+    <p>${esc(i.usd)} ${esc(i.asset || "USDT")} · payment <b>${esc(i.payment)}</b> · tx ${tx}</p>
     <p>Checkout link (works with this app stopped): <a href="${esc(i.checkout)}" target="_blank" rel="noopener">open checkout</a></p>
     <p><button data-a="verify">Verify onchain</button>
-       <button data-a="convert">Run simulated USD conversion</button>
+       ${i.asset === "WBT" ? "Settles in wrapped WBT." : `<button data-a="convert">Run simulated USD conversion</button>
        <label>Payout scenario
          <select id="scn">
            <option value="success">Mudrex succeeds</option>
@@ -40,9 +40,11 @@ async function show(id) {
            <option value="fail">Mudrex reports failure</option>
          </select>
        </label>
-       <button data-a="payout">${cfg.crePayouts ? "Run Chainlink CRE payout simulation" : "Run simulated INR payout"}</button>
+       <button data-a="payout">${cfg.localCcip ? "Run CRE + CCIP simulation" : cfg.crePayouts ? "Run Chainlink CRE payout simulation" : "Run simulated INR payout"}</button>`}
        <a href="/api/invoices/${esc(i.id)}/receipt" target="_blank">Receipt</a></p>
     ${cre ? `<p><b>${esc(decision.source)}</b> · ${esc(cre.status)} · ${esc(decision.reason)}</p>` : ""}
+    ${decision.ens ? `<p>Finalized ENSv2 recipient matched for <code>${esc(decision.ens.name)}</code> on ${esc(decision.ens.network ?? (decision.ens.chainId === 1 ? "Ethereum mainnet" : "Ethereum Sepolia"))}.</p>` : ""}
+    ${decision.ccip ? `<p>CCIP approval (Chainlink Local) · receiver route ${esc(decision.ccip.beforeRoute)} → ${esc(decision.ccip.afterRoute)} · message <code>${esc(decision.ccip.messageId)}</code></p>` : ""}
     ${payout ? `<p>Simulated payout via <b>${esc(route)}</b> · ${esc(i.payout)}. ${esc(quote.fallback_reason)}</p>` : ""}
     ${awaitingCredit ? '<p>Awaiting simulated INR credit. <button data-a="simulate-p2p-credit">Simulate bank credit</button></p>' : ""}
     <p><label>Paid elsewhere? Submit tx hash <input id="txh" size="66"></label> <button data-a="submit">Submit</button></p>
@@ -58,6 +60,7 @@ async function show(id) {
   };
 }
 
+$("#create").elements.asset.onchange = () => { $("#create").elements.usd.value = ""; };
 $("#create").onsubmit = async e => {
   e.preventDefault();
   try { const i = await api("/invoices", Object.fromEntries(new FormData(e.target))); $("#msg").textContent = "Signed invoice " + i.id; refresh(); show(i.id); }
@@ -67,6 +70,7 @@ $("#rows").onclick = e => e.target.dataset.id && show(e.target.dataset.id);
 
 (async () => {
   cfg = await api("/config");
+  $("#asset-choice").hidden = !cfg.paymentAssets?.includes("WBT");
   $("#net").textContent = `${cfg.env === "testnet" ? "Whitechain Sepolia testnet" : "Local dev chain"} · chain ${cfg.chainId}`;
   refresh(); setInterval(refresh, 5000);
 })();

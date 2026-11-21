@@ -11,3 +11,7 @@ The payout workflow joins three sources. It reads the enrolled Whitechain recipi
 5. Use separate invoices for Mudrex success, Mudrex unavailable before dispatch, and an unresolved attempt. To show the last case, first select **Mudrex times out**. Select the unavailable scenario on the same invoice and run the workflow again. It should show a hold and create no fallback order.
 
 The backend invokes the CLI without broadcasting. The HTTP trigger payload contains the run nonce, public receipt fields, simulated scenario and enrolled ENS settings. The runner accepts only the result from its own child process. Neither the workflow nor its HTTP evidence endpoints send real payouts. For a manual simulation, use the [documented HTTP trigger command](https://docs.chain.link/cre/guides/workflow/using-triggers/http-trigger/testing-in-simulation) from this directory with the same inputs. Manual results do not apply payouts to the app.
+
+## Combined CRE and CCIP 2.0 demo
+
+See [the local demo guide](../docs/CHAINLINK_LOCAL_DEMO.md) to run the CRE decision through Chainlink Local and verify receiver state before simulated payout.

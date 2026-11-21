@@ -5,9 +5,10 @@
 <header><strong>SenFund</strong> <span>Merchant dashboard</span> <span id="net" class="badge">…</span></header>
 <main>
   <section class="card">
-    <h2>New USD invoice</h2>
+    <h2>New invoice</h2>
     <form id="create">
-      <label>Amount (USD) <input name="usd" required pattern="\d+(\.\d{1,2})?"></label>
+      <label id="asset-choice" hidden>Payment asset <select name="asset"><option value="USDT">USDT (test)</option><option value="WBT">WBT (test)</option></select></label>
+      <label>Amount <input name="usd" required pattern="\d+(\.\d{1,2})?"></label>
       <label>Description <input name="description" required></label>
       <label>Customer <input name="customer" required></label>
       <button>Create &amp; sign</button>
@@ -16,7 +17,7 @@
   </section>
   <section class="card">
     <h2>Invoices</h2>
-    <table><thead><tr><th>Invoice</th><th>USD</th><th>Payment</th><th>Conversion <small>(simulated)</small></th><th>INR payout <small>(simulated)</small></th><th></th></tr></thead>
+    <table><thead><tr><th>Invoice</th><th>Amount</th><th>Payment</th><th>Conversion <small>(simulated)</small></th><th>INR payout <small>(simulated)</small></th><th></th></tr></thead>
     <tbody id="rows"></tbody></table>
   </section>
   <section class="card" id="detail" hidden></section>

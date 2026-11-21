@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from eth_account import Account
 from web3 import Web3
 from backend.config import ROOT, WHITECHAIN_SEPOLIA, load
-from backend.ens import SEPOLIA, UNIVERSAL_RESOLVER, WHITECHAIN_COIN_TYPE, dns_name
+from backend.ens import WHITECHAIN_COIN_TYPE, dns_name, network
 
 
 def main():
@@ -19,14 +19,17 @@ def main():
         "tokenDecimals": cfg.token_decimals, "merchant": Account.from_key(cfg.merchant_key).address,
     }
     if cfg.env == "testnet":
+        deployment = network(cfg.ens_network)
         dns_name(cfg.ens_name)
         if cfg.token.lower() != WHITECHAIN_SEPOLIA["usdt"].lower() or cfg.token_decimals != 6:
             raise ValueError("checkout requires official Whitechain test USDT")
         if not Web3.is_address(cfg.ens_resolver) or not cfg.ens_rpc.startswith("https://"):
             raise ValueError("configure the enrolled ENS resolver and a public HTTPS RPC without credentials")
-        trust["ens"] = {"name": cfg.ens_name, "chainId": SEPOLIA, "rpc": cfg.ens_rpc,
-                        "universalResolver": UNIVERSAL_RESOLVER, "resolver": cfg.ens_resolver,
+        trust["ens"] = {"name": cfg.ens_name, "chainId": deployment.chain_id, "rpc": cfg.ens_rpc,
+                        "universalResolver": deployment.universal_resolver, "resolver": cfg.ens_resolver,
                         "coinType": WHITECHAIN_COIN_TYPE}
+        if cfg.wrapped_wbt:
+            trust["wrappedWbt"] = cfg.wrapped_wbt
     else:
         trust["recipient"] = Web3.to_checksum_address(cfg.recipient)
     target = ROOT / "checkout" / "trust.json"

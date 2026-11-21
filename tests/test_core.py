@@ -231,6 +231,33 @@ def test_p2p_fallback_survives_restart_and_requires_credit(env):
     restarted.db.close()
 
 
+def test_cash_out_selects_currency_and_creates_one_p2p_order(env):
+    inv, rc = paid(env)
+    invoice_id = inv["id"]
+    with pytest.raises(InvalidTransition, match="verified"):
+        env.app.quote_cash_out(invoice_id, "EU")
+    env.app.submit_tx(invoice_id, rc["transactionHash"].hex())
+
+    quote = env.app.quote_cash_out(invoice_id, "EU")
+    assert (quote["amount"], quote["currency"], quote["route"]) == ("21.04", "EUR", "p2p")
+    assert env.app.get(invoice_id)["corridor"] == "IN"
+    assert env.app.prepare_cash_out(invoice_id, "EU")
+    with pytest.raises(InvalidTransition, match="reserved"):
+        env.app.run_payout(invoice_id)
+
+    result = env.app.run_payout(invoice_id, "mudrex_unavailable")
+    assert result["payout"] == "ON_HOLD"
+    order = next(op for op in result["operations"] if op["stage"] == "payout")
+    assert order["external_id"].startswith("SIM-P2P-")
+    assert json.loads(order["detail"])["amount"] == quote["amount"]
+    with pytest.raises(InvalidTransition, match="locked"):
+        env.app.prepare_cash_out(invoice_id, "GB")
+    assert not env.app.prepare_cash_out(invoice_id, "EU")
+    assert env.app.confirm_p2p_credit(invoice_id)["payout"] == "COMPLETED"
+    assert not env.app.prepare_cash_out(invoice_id, "EU")
+    assert len(env.app.db.q("select * from mock_provider_orders")) == 1
+
+
 def test_payout_callbacks_dedupe_and_stale(env):
     inv, rc = paid(env)
     env.app.submit_tx(inv["id"], rc["transactionHash"].hex())
@@ -443,3 +470,21 @@ def test_drafter_valid_invalid_and_bad_amount():
     bad = json.dumps({"client_name": "A", "amount_usd": -1, "due_date": "2026-12-01", "description": "x"})
     with pytest.raises(ValueError):
         drafter.draft_invoice("pay me", "http://x", "k", _llm(bad))
+
+
+def test_wbt_invoice_settles_wrapped_wbt_without_usd_conversion(env):
+    wrapped = devchain.deploy(env.w3, "MockWrappedWBT", env.payer)
+    app = SenFund(env.cfg.with_(wrapped_wbt=wrapped.address), w3=env.w3, db=env.app.db)
+    invoice = app.create_invoice("0.25", "WBT checkout", asset="WBT")
+    request = invoice["request"]
+    amount = 25 * 10**16
+    assert (invoice["asset"], request["token"], int(request["amount"])) == ("WBT", wrapped.address, amount)
+    assert app.checkout_request(invoice["id"])["tokenDecimals"] == 18
+    wrapped.functions.deposit().transact({"from": env.payer, "value": amount})
+    receipt = devchain.pay(env.w3, request, env.payer)
+    env.mine(2)
+    assert app.submit_tx(invoice["id"], receipt["transactionHash"].hex())["status"] == "paid"
+    assert wrapped.functions.balanceOf(env.cfg.recipient).call() == amount
+    assert app.evidence_pack(invoice["id"])["settlement"]["tokenSymbol"] == "WWBT (test)"
+    with pytest.raises(InvalidTransition, match="wrapped WBT"):
+        app.run_conversion(invoice["id"])

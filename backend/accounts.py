@@ -37,7 +37,6 @@ class Accounts:
                 or not isinstance(email, str) or not 0 < len(email) <= 254
                 or type(authenticated_at) is not int or not now - 330 <= authenticated_at <= now + 30):
             raise ValueError("A verified account from the configured identity provider is required.")
-        token = secrets.token_urlsafe(32)
         with self.db.transaction():
             self.db.x(
                 "insert into accounts(id,issuer,subject,email) values(?,?,?,?) "
@@ -45,9 +44,14 @@ class Accounts:
                 uuid4().hex, self.issuer, subject, email,
             )
             row = self.db.one("select id from accounts where issuer=? and subject=?", self.issuer, subject)
-            self.db.x("delete from account_sessions where expires_at<=?", now)
-            self.db.x("insert into account_sessions(token_hash,account_id,expires_at,authenticated_at) values(?,?,?,?)",
-                      token_hash(token), row["id"], now + 8 * 3600, authenticated_at)
+            return self.issue_session(row["id"], authenticated_at)
+
+    def issue_session(self, account_id, authenticated_at):
+        token = secrets.token_urlsafe(32)
+        now = int(time.time())
+        self.db.x("delete from account_sessions where expires_at<=?", now)
+        self.db.x("insert into account_sessions(token_hash,account_id,expires_at,authenticated_at) values(?,?,?,?)",
+                  token_hash(token), account_id, now + 8 * 3600, authenticated_at)
         return token
 
     def actor(self, token):
@@ -55,8 +59,8 @@ class Accounts:
             return None
         return self.db.one(
             "select a.id,a.subject,a.email,a.display_name,s.authenticated_at from accounts a "
-            "join account_sessions s on s.account_id=a.id where s.token_hash=? and s.expires_at>?",
-            token_hash(token), int(time.time()),
+            "join account_sessions s on s.account_id=a.id where s.token_hash=? and s.expires_at>? and a.issuer=?",
+            token_hash(token), int(time.time()), self.issuer,
         )
 
     def profile(self, actor):

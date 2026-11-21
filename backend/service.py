@@ -6,6 +6,7 @@ import os
 import re
 import time
 import uuid
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 from eth_account import Account
@@ -67,20 +68,24 @@ class SenFund:
     def create_invoice(self, usd: str, description: str, customer: str = "",
                        beneficiary: dict | None = None, ttl: int | None = None,
                        idempotency_key: str | None = None, owner: str | None = None,
-                       corridor: str = "IN") -> dict:
+                       corridor: str = "IN", asset: str = "USDT") -> dict:
         if corridor not in CORRIDORS:
             raise ValueError("Unknown payout corridor.")
         if not (self.cfg.settlement and self.merchant):
             raise ValueError("deployment not configured: need settlement contract and merchant key")
+        assets = self.cfg.payment_assets
+        if not isinstance(asset, str) or asset not in assets:
+            raise ValueError("Choose a supported payment asset.")
+        token, decimals = assets[asset]
         try:
             usd_d = Decimal(str(usd))
         except InvalidOperation:
-            raise ValueError("Enter a valid USD amount.") from None
+            raise ValueError("Enter a valid invoice amount.") from None
         if (not usd_d.is_finite() or usd_d <= 0 or usd_d.adjusted() >= 22
-                or usd_d.as_tuple().exponent < -min(2, self.cfg.token_decimals)):
-            raise ValueError("Enter a positive USD amount with up to two decimal places and 22 whole digits.")
+                or usd_d.as_tuple().exponent < -min(2, decimals)):
+            raise ValueError("Enter a positive invoice amount with up to two decimal places and 22 whole digits.")
         numerator, denominator = usd_d.as_integer_ratio()
-        units = numerator * 10 ** self.cfg.token_decimals // denominator
+        units = numerator * 10 ** decimals // denominator
         if units >= 2**256:
             raise ValueError("Invoice amount exceeds the settlement contract limit.")
         if idempotency_key is not None and not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", idempotency_key):
@@ -93,7 +98,8 @@ class SenFund:
                 "beneficiary": beneficiary or {}}
         fingerprint = hashlib.sha256(json.dumps(
             # IN keeps the old fingerprint so existing keys still match.
-            [units, description, customer, data["beneficiary"], ttl] + ([] if corridor == "IN" else [corridor]), sort_keys=True
+            [units, description, customer, data["beneficiary"], ttl]
+            + ([] if corridor == "IN" else [corridor]) + ([] if asset == "USDT" else [asset]), sort_keys=True
         ).encode()).hexdigest()
         if idempotency_key is not None:
             existing = self._invoice_for_key(scope, idempotency_key, fingerprint)
@@ -116,7 +122,7 @@ class SenFund:
             "chainId": self.cfg.chain_id, "contract": Web3.to_checksum_address(self.cfg.settlement),
             "invoiceId": "0x" + os.urandom(32).hex(), "merchant": self.merchant,
             "domainName": self.cfg.domain_name, "recipient": Web3.to_checksum_address(recipient),
-            "token": Web3.to_checksum_address(self.cfg.token), "amount": str(units),
+            "token": Web3.to_checksum_address(token), "amount": str(units),
             "expiry": now + (ttl or self.cfg.invoice_ttl),
         }, self.cfg.merchant_key)
         with self.db.transaction():
@@ -146,6 +152,7 @@ class SenFund:
         if not r:
             raise KeyError(inv)
         r["data"], r["request"] = json.loads(r["data"]), json.loads(r["request"])
+        r["asset"] = "WBT" if r["request"]["token"].lower() == self.cfg.wrapped_wbt.lower() else "USDT"
         r["receipt"] = self.db.one("select * from receipts where invoice=? and status='active'", inv)
         r["operations"] = self.db.q("select key,stage,status,external_id,detail from operations where invoice=?", inv)
         r["history"] = self.db.q("select stage,old,new,source,reason,at from transitions where invoice=? order by id", inv)
@@ -167,8 +174,10 @@ class SenFund:
     def checkout_request(self, inv: str) -> dict:
         """What the independent checkout needs: the signed request plus public display fields. No beneficiary data."""
         r = self.get(inv)
+        asset = r["asset"]
         return {**r["request"], "usd": r["usd"],
-                "tokenSymbol": "USDT (test)", "tokenDecimals": self.cfg.token_decimals}
+                "tokenSymbol": "WWBT (test)" if asset == "WBT" else "USDT (test)",
+                "tokenDecimals": self.cfg.payment_assets[asset][1]}
 
     # ---------- payment ----------
     def submit_tx(self, inv: str, tx_hash: str, source="api") -> dict:
@@ -297,6 +306,8 @@ class SenFund:
     # ---------- simulated conversion ----------
     def run_conversion(self, inv: str) -> dict:
         r = self.get(inv)
+        if r["asset"] == "WBT":
+            raise InvalidTransition("WBT invoices settle in wrapped WBT. Simulated fiat payout is available for USDT invoices.")
         if r["payment"] != "PAID":
             raise InvalidTransition("conversion requires a verified payment")
         if r["conversion"] == "COMPLETED":
@@ -309,6 +320,49 @@ class SenFund:
         return self.get(inv)
 
     # ---------- simulated payout ----------
+    def cash_out_intent(self, inv):
+        row = self.db.one("select detail from operations where key=?", f"{inv}:cash-out:{self.cfg.env}")
+        return json.loads(row["detail"])["corridor"] if row else None
+
+    def check_cash_out_route(self, inv, scenario):
+        if self.cash_out_intent(inv) and scenario != "mudrex_unavailable":
+            raise InvalidTransition("This invoice is reserved for the selected P2P cash-out.")
+
+    def quote_cash_out(self, inv, corridor):
+        if not isinstance(corridor, str) or corridor not in CORRIDORS:
+            raise ValueError("Choose a supported payout currency.")
+        r = self.get(inv)
+        if (r["asset"] != "USDT" or r["payment"] != "PAID" or r["needs_review"] or not r["receipt"]):
+            raise InvalidTransition("Cash-out requires a verified test USDT invoice.")
+        intent = self.cash_out_intent(inv)
+        if intent and intent != corridor:
+            raise InvalidTransition("The payout currency is locked for this cash-out.")
+        if r["payout"] != "NOT_STARTED" or self.db.one("select 1 from operations where key=?", f"{inv}:payout:{self.cfg.env}"):
+            raise InvalidTransition("A payout has already been attempted for this invoice.")
+        conversion = self.db.one("select detail from operations where key=?", f"{inv}:conversion:{self.cfg.env}")
+        conversion = (json.loads(conversion["detail"]) if conversion else
+                      MockConversion().convert(int(r["amount_units"]), self.cfg.token_decimals))
+        quote = MockRemittance(self.db, route="p2p", corridor=corridor).quote(conversion["net_usd"])
+        if Decimal(quote["amount"]) <= 0:
+            raise ValueError("This invoice amount is too small for the selected corridor fees.")
+        conversion_fee = Decimal(r["usd"]) - Decimal(conversion["net_usd"])
+        return {**quote, "corridor": corridor, "inputUsdt": r["usd"], "conversionFeeUsd": str(conversion_fee)}
+
+    def prepare_cash_out(self, inv, corridor):
+        with self.db.transaction():
+            intent = self.cash_out_intent(inv)
+            if intent and intent == corridor and self.db.one(
+                    "select 1 from operations where key=?", f"{inv}:payout:{self.cfg.env}"):
+                return False
+            self.quote_cash_out(inv, corridor)
+            if not intent:
+                self.db.x("update invoices set corridor=? where id=?", corridor, inv)
+                self.db.x("insert into operations(key,invoice,stage,status,detail,at) values(?,?,?,?,?,?)",
+                          f"{inv}:cash-out:{self.cfg.env}", inv, "cash-out", "CONFIRMED",
+                          json.dumps({"corridor": corridor}), int(time.time()))
+        self.run_conversion(inv)
+        return True
+
     def run_payout(self, inv: str, scenario: str = "success") -> dict:
         r = self.get(inv)
         if r["payment"] != "PAID" or r["conversion"] != "COMPLETED" or r["needs_review"]:
@@ -317,6 +371,7 @@ class SenFund:
             raise ValueError("unknown simulated payout scenario")
         if r["payout"] in ("COMPLETED", "FAILED"):
             return r
+        self.check_cash_out_route(inv, scenario)
         key = f"{inv}:payout:{self.cfg.env}"
         op = self.db.one("select * from operations where key=?", key)
         if op:
@@ -428,7 +483,7 @@ class SenFund:
                 "environment": self.cfg.env, "chainId": self.cfg.chain_id, "testnetOnly": True,
                 "explorer": f'{self.cfg.explorer}/tx/{rc["tx_hash"]}',
                 "settlement": {**{k: rc[k] for k in ("tx_hash", "block_number", "block_hash", "log_index", "payer", "amount")},
-                               "recipient": req["recipient"], "token": req["token"], "tokenSymbol": "USDT (test)"},
+                               "recipient": req["recipient"], "token": req["token"], "tokenSymbol": "WWBT (test)" if r["asset"] == "WBT" else "USDT (test)"},
                 "payout": {"route": detail.get("route"), "fallbackReason": detail.get("fallback_reason"),
                            "simulatedOrderRef": order,
                            "simulatedBankRef": f"SIM-BANK-{order}" if order and r["payout"] == "COMPLETED" else None},
@@ -438,29 +493,119 @@ class SenFund:
 
     def receipt_html(self, inv: str) -> str:
         r = self.get(inv)
-        e = html.escape
         rc = r["receipt"]
+        req = r["request"]
         ops = {o["stage"]: o for o in r["operations"]}
         conv = json.loads(ops["conversion"]["detail"]) if "conversion" in ops else None
         pay = json.loads(ops["payout"]["detail"]) if "payout" in ops else None
-        explorer = f'{self.cfg.explorer}/tx/{rc["tx_hash"]}' if rc else ""
-        onchain = (f"<p><b>Verified onchain.</b> Tx <a href='{e(explorer)}'>{e(rc['tx_hash'])}</a>, block {rc['block_number']}, "
-                   f"payer {e(rc['payer'])}, {Decimal(rc['amount']) / 10 ** self.cfg.token_decimals} test USDT on chain {self.cfg.chain_id}.</p>"
-                   if rc else f"<p>Not verified. Payment state: {e(r['payment'])}.</p>")
-        conv_s = (f"<p>SIMULATED. {e(conv['gross_usd'])} USD gross, {e(conv['fee_usd'])} fee, {e(conv['net_usd'])} USD net. No exchange was used.</p>"
-                  if conv else "<p>Not run.</p>")
-        payout_label = {"COMPLETED": "Simulated payout completed", "ON_HOLD": "Simulated payout on hold",
-                        "FAILED": "Simulated payout failed"}.get(r["payout"], f"Simulated payout: {r['payout']}")
-        route_labels = {"mudrex": "Mudrex", "p2p": "Protected P2P fallback", "eu_offramp": "MiCA off-ramp"}
-        route = route_labels.get(pay.get("route"), "Mock remittance") if pay else ""
-        fallback_reason = pay.get("fallback_reason", "") if pay else ""
-        pay_s = (f"<p>{e(payout_label)}. Route: {e(route)} (simulated). {e(fallback_reason)}"
-                 f"</p><p>{e(pay['amount'])} {e(pay['currency'])} at fixture rate {e(pay['rate'])}, fee {e(pay['fee'])} {e(pay['currency'])}. "
-                 f"Mock provider ref {e(ops['payout']['external_id'] or 'none')}. No money moved.</p>" if pay else "<p>Not run.</p>")
-        return f"""<!doctype html><html><head><meta charset="utf-8"><title>SenFund receipt {e(inv)}</title>
-<style>body{{font:15px system-ui;max-width:720px;margin:2em auto;color:#14213d}}h1{{color:#0b6e4f}}section{{border:1px solid #ccd;border-radius:8px;padding:0 1em;margin:1em 0}}.sim{{background:#fff7e0}}</style></head>
-<body><h1>SenFund receipt</h1><p>Invoice {e(inv)} · {e(r['data']['description'])} · {e(r['usd'])} USD (test pricing) · Testnet only</p>
-<section><h2>1. Onchain settlement (Whitechain Sepolia)</h2>{onchain}</section>
-<section class="sim"><h2>2. USD conversion (simulated)</h2>{conv_s}</section>
-<section class="sim"><h2>3. Payout (simulated)</h2>{pay_s}</section>
-<p><small>Sections 2 and 3 are simulations for demonstration. Bank details are excluded.</small></p></body></html>"""
+
+        def e(value):
+            return html.escape(str(value))
+
+        def field(label, value, *, address=False):
+            shown = f"<code>{e(value)}</code>" if address else e(value)
+            return f"<div><dt>{e(label)}</dt><dd>{shown}</dd></div>"
+
+        asset = "WWBT" if r["asset"] == "WBT" else "USDT"
+        decimals = self.cfg.payment_assets[r["asset"]][1]
+        paid = r["payment"] == "PAID" and rc is not None and not r["needs_review"]
+        status = "Paid" if paid else "Under review" if r["needs_review"] else r["payment"].replace("_", " ").title()
+        amount = format(Decimal(rc["amount"]).scaleb(-decimals).normalize(), "f") if paid else r["usd"]
+        issued = datetime.fromtimestamp(r["created_at"], timezone.utc).strftime("%d %b %Y")
+        customer = r["data"].get("customer")
+        service = r["data"].get("description") or "Invoice payment"
+        network = "Whitechain Sepolia" if self.cfg.env == "testnet" else "Local test network"
+
+        settlement = ""
+        if rc:
+            tx = rc["tx_hash"]
+            explorer = f"{self.cfg.explorer}/tx/{tx}" if self.cfg.explorer else ""
+            tx_hash = (f'<a href="{e(explorer)}"><code>{e(tx)}</code></a>'
+                       if explorer else f"<code>{e(tx)}</code>")
+            settlement = f"""
+              <section class="section">
+                <h2>Settlement details</h2>
+                <dl class="details">
+                  {field("Network", f"{network} · {self.cfg.chain_id}")}
+                  {field("Block", rc["block_number"])}
+                  {field("Paid from", rc["payer"], address=True)}
+                  {field("Received by", req["recipient"], address=True)}
+                  <div class="wide"><dt>Transaction</dt><dd>{tx_hash}</dd></div>
+                </dl>
+              </section>"""
+
+        simulation = ""
+        if r["asset"] == "USDT" and (conv or pay):
+            conversion = ""
+            if conv and conv.get("net_usd") is not None:
+                fee = f' after a {e(conv["fee_usd"])} USD simulated fee' if conv.get("fee_usd") is not None else ""
+                conversion = f'<p>Conversion quote · {e(conv["net_usd"])} USD net{fee}.</p>'
+            payout = ""
+            if pay:
+                labels = {"COMPLETED": "Simulated payout completed", "ON_HOLD": "Simulated payout on hold",
+                          "FAILED": "Simulated payout failed"}
+                routes = {"mudrex": "Mudrex", "p2p": "Protected P2P fallback", "eu_offramp": "MiCA off-ramp"}
+                route = e(routes.get(pay.get("route"), "Mock remittance"))
+                quote = (f'{e(pay["amount"])} {e(pay["currency"])} via '
+                         if pay.get("amount") is not None and pay.get("currency") else "")
+                payout = f'<p><strong>{e(labels.get(r["payout"], r["payout"]))}</strong> · {quote}{route}.</p>'
+                reference = ops["payout"]["external_id"]
+                if reference:
+                    payout += f'<p>Provider reference · <code>{e(reference)}</code></p>'
+                if pay.get("fallback_reason"):
+                    payout += f'<p>{e(pay["fallback_reason"])}</p>'
+            simulation = f'<aside class="simulation"><h2>Simulation summary</h2>{conversion}{payout}</aside>'
+
+        return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SenFund receipt {e(inv)}</title>
+<style>
+:root {{ color: #221e18; background: #f5efe3; font: 15px/1.55 system-ui, sans-serif; }}
+* {{ box-sizing: border-box; }}
+body {{ margin: 0; padding: clamp(12px, 5vw, 50px); }}
+.receipt {{ max-width: 680px; margin: auto; padding: clamp(18px, 6vw, 44px); background: #fffcf6;
+  border: 1px solid #dcd0b8; border-top: 5px solid #7a4e29; border-radius: 6px; }}
+header {{ display: flex; align-items: start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }}
+h1, h2, p, dl {{ margin: 0; }}
+.brand {{ font-weight: 750; letter-spacing: -.025em; }}
+h1 {{ margin-top: 8px; font: 700 clamp(28px, 6vw, 40px)/1.15 Georgia, serif; letter-spacing: -.035em; }}
+h2 {{ font-size: 15px; }}
+.badge {{ padding: 4px 10px; border-radius: 999px; background: #eee5d5; font-weight: 700; }}
+.badge.paid {{ color: #244b39; background: #e4eee5; }}
+.meta, .caption, dt {{ color: #665b4c; }}
+.meta {{ display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 14px 0 24px; font-size: 13px; }}
+.amount {{ display: grid; gap: 2px; padding: 16px 0; border-block: 1px dashed #cabca2; }}
+.amount strong {{ font-size: clamp(24px, 6vw, 36px); line-height: 1.2; font-variant-numeric: tabular-nums; }}
+.caption {{ font-size: 13px; }}
+.section {{ margin-top: 23px; }}
+.details {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; margin-top: 8px; }}
+.details .wide {{ grid-column: 1 / -1; }}
+dt {{ font-size: 12px; }}
+dd {{ margin: 2px 0 0; overflow-wrap: anywhere; }}
+code {{ font-size: .86em; }}
+a {{ color: #664325; text-underline-offset: 2px; }}
+.simulation {{ margin-top: 22px; padding: 12px 14px; background: #f5eddd; border-left: 2px solid #b28756; font-size: 13px; }}
+.simulation p {{ margin-top: 4px; }}
+footer {{ margin-top: 24px; padding-top: 12px; border-top: 1px solid #ded3be; }}
+@media (max-width: 460px) {{ .details {{ grid-template-columns: 1fr; }} }}
+@media print {{
+  @page {{ margin: 14mm; }}
+  :root, .receipt {{ background: white; }}
+  body, .receipt {{ padding: 0; }}
+  .receipt {{ border: 0; }}
+  .section, .simulation {{ break-inside: avoid; }}
+}}
+</style></head><body>
+<main class="receipt">
+  <header><div><p class="brand">SenFund</p><h1>Payment receipt</h1></div><span class="badge{' paid' if paid else ''}">{e(status)}</span></header>
+  <p class="meta"><span>Invoice <code>{e(inv)}</code></span><span>Issued {e(issued)} UTC</span></p>
+  <div class="amount"><span class="caption">{"Amount received" if paid else "Invoice amount"} · test {asset}</span>
+    <strong>{e(amount)} {asset}</strong><span class="caption">{"Verified onchain" if paid else "Awaiting verified payment"}</span></div>
+  <section class="section"><h2>Invoice details</h2><dl class="details">
+    {field("Service", service)}
+    {field("Billed to", customer) if customer else ""}
+  </dl></section>
+  {settlement}
+  {simulation}
+  <footer class="caption">Testnet receipt. Test tokens have no monetary value.</footer>
+</main></body></html>"""

@@ -24,7 +24,9 @@ def invoice(env, monkeypatch):
 
 def decision(route):
     def simulate(payload, rpc):
-        return {**payload, "route": route, "reason": "test decision"}
+        return {**payload, "route": route, "reason": "test decision", "policy": cre_payout.POLICY,
+                "checks": dict.fromkeys(cre_payout.REQUIRED_CHECKS, True),
+                "ensChainId": cre_payout.ens.network(payload["ensNetwork"]).chain_id}
     return simulate
 
 
@@ -119,3 +121,43 @@ def test_dashboard_payout_runs_cre_and_exposes_only_evidence(invoice, monkeypatc
         finally:
             server.shutdown()
             server_thread.join()
+
+
+def test_missing_cre_policy_check_blocks_dispatch(invoice, monkeypatch):
+    app, inv = invoice
+
+    def incomplete(payload, rpc):
+        output = decision("USE_MUDREX")(payload, rpc)
+        output["checks"]["providerSnapshot"] = False
+        return output
+
+    monkeypatch.setattr(cre_payout, "simulate", incomplete)
+    with pytest.raises(InvalidTransition, match="evidence checks"):
+        cre_payout.run(app, Lock(), inv, "success")
+    assert not app.db.q("select * from mock_provider_orders")
+
+
+def test_ccip_failure_leaves_payout_unstarted(invoice, monkeypatch):
+    app, inv = invoice
+    monkeypatch.setattr(cre_payout, "simulate", decision("USE_MUDREX"))
+
+    def reject(receipt, nonce, route):
+        raise InvalidTransition("CCIP rejected the approval")
+
+    result = cre_payout.run(app, Lock(), inv, "success", authorize=reject)
+    audit = next(op for op in result["operations"] if op["stage"] == "cre")
+    assert audit["status"] == "HOLD"
+    assert result["payout"] == "NOT_STARTED"
+    assert not app.db.q("select * from mock_provider_orders")
+
+
+def test_cre_rejects_decision_from_wrong_ens_network(invoice, monkeypatch):
+    app, inv = invoice
+
+    def wrong_network(payload, rpc):
+        return {**decision("USE_MUDREX")(payload, rpc), "ensChainId": 1}
+
+    monkeypatch.setattr(cre_payout, "simulate", wrong_network)
+    with pytest.raises(InvalidTransition, match="ENS network"):
+        cre_payout.run(app, Lock(), inv, "success")
+    assert not app.db.q("select * from mock_provider_orders")

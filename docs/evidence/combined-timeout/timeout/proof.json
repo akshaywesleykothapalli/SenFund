@@ -1,0 +1,40 @@
+{
+  "capturedAtUtc": "2026-11-07T05:08:02.329840+00:00",
+  "invoice": "inv_4fe69ac0f479",
+  "invoiceDigest": "0x61cd04d65d85cf34b98689ae4234a207cf2e8bd48794ca06f48711848d5a19ed",
+  "scenario": "timeout",
+  "route": "USE_MUDREX",
+  "decision": {
+    "run": "5f504a22c7f04d27bc1a7f54a13fb054",
+    "reason": "Primary is available before dispatch",
+    "source": "Chainlink CRE CLI",
+    "simulated": true,
+    "policy": "senfund-payout-v2",
+    "checks": {
+      "finalizedEns": true,
+      "provider": true,
+      "providerSnapshot": true,
+      "receipt": true
+    },
+    "ccip": {
+      "mode": "Chainlink Local 0.3.1, CCIP 2.0.0",
+      "evmChainId": 131277322940537,
+      "sourceSelector": "16015286601757825753",
+      "destinationSelector": "16281711391670634445",
+      "router": "0x2946259E0334f33A064106302415aD3391BeD384",
+      "sender": "0xDe09E74d4888Bc4e65F589e8c13Bce9F71DdF4c7",
+      "receiver": "0x51a240271AB8AB9f9a21C82d9a85396b704E164d",
+      "transactionHash": "0x21edbfd11118582e03f38af182b72472adfa440833f370e9ce12c16d8d5a9819",
+      "messageId": "0x9db128684fa1e1bc1caf10aede9c9cea3774f56c6498496c4ba12034ca43e1eb",
+      "invoiceDigest": "0x61cd04d65d85cf34b98689ae4234a207cf2e8bd48794ca06f48711848d5a19ed",
+      "settlementBinding": "0x6f232464bdacde3fd0ab19d12c780046ae1289982b9239a19e0d164d80ff4109",
+      "approvedRun": "5f504a22c7f04d27bc1a7f54a13fb054",
+      "beforeRoute": 0,
+      "afterRoute": 1,
+      "reused": false
+    }
+  },
+  "payout": "ON_HOLD",
+  "destinationRoute": 1,
+  "simulatedOrders": []
+}

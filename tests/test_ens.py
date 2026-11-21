@@ -7,13 +7,18 @@ from backend import chain, ens
 from backend.service import SenFund
 
 
+@pytest.mark.parametrize("network, chain_id, resolver", [
+    ("sepolia", 11155111, "0x24e1d8e068620b647ca097f961a61055f4f42d72"),
+    ("mainnet", 1, "0x06fdd07f007adac667177b46ab2eb9a75132cfd5"),
+])
 @pytest.mark.parametrize("present", [True, False])
-def test_ens_requires_explicit_address(env, present):
-    cfg = env.cfg.with_(ens_rpc="https://example.invalid", ens_name="merchant.example.eth", ens_resolver=env.settle.address)
+def test_ens_requires_explicit_address(env, network, chain_id, resolver, present):
+    cfg = env.cfg.with_(ens_network=network, ens_rpc="https://example.invalid",
+                       ens_name="merchant.example.eth", ens_resolver=env.settle.address)
     calls = []
 
     def call(tx, block_identifier):
-        assert tx["to"] == ens.UNIVERSAL_RESOLVER
+        assert tx["to"].lower() == resolver
         assert block_identifier == 31
         name, query = env.w3.codec.decode(["bytes", "bytes"], tx["data"][4:])
         assert name == b"\x08merchant\x07example\x03eth\0"
@@ -24,7 +29,7 @@ def test_ens_requires_explicit_address(env, present):
         )
         return env.w3.codec.encode(["bytes", "address"], [value, cfg.ens_resolver])
 
-    w3 = SimpleNamespace(codec=env.w3.codec, eth=SimpleNamespace(chain_id=11155111, block_number=31, call=call))
+    w3 = SimpleNamespace(codec=env.w3.codec, eth=SimpleNamespace(chain_id=chain_id, block_number=31, call=call))
     if present:
         assert ens.resolve_recipient(cfg, w3) == env.cfg.recipient
         assert calls == ["32f111d7", "f1cb7e06"]
@@ -53,3 +58,11 @@ def test_legacy_request_without_domain_still_recovers_merchant(env):
     legacy = chain.sign_request(original, env.cfg.merchant_key)
     assert chain.typed(legacy)["domain"]["name"] == "SenFun"
     assert chain.recover(legacy) == env.app.merchant
+
+
+def test_mainnet_ens_refuses_a_sepolia_rpc(env):
+    cfg = env.cfg.with_(ens_network="mainnet", ens_rpc="https://example.invalid",
+                       ens_name="merchant.example.eth", ens_resolver=env.settle.address)
+    w3 = SimpleNamespace(eth=SimpleNamespace(chain_id=11155111))
+    with pytest.raises(ValueError, match="Ethereum mainnet"):
+        ens.resolve_recipient(cfg, w3)

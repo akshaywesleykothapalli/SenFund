@@ -25,7 +25,8 @@ jobs:
       - run: npm run build
       - run: npm ci --prefix contracts
       - run: python scripts/compile.py
+      - run: python scripts/compile_ccip.py
       - run: python -m pytest -q tests
-      - run: node --test tests/checkout.test.cjs
+      - run: node --test tests/checkout.test.cjs tests/api-route.test.mjs
       - run: npm ci --prefix cre/payout
       - run: npm run check --prefix cre/payout

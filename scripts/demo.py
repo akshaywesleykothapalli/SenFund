@@ -117,7 +117,7 @@ def check(cfg, w3, payer=None, deployer=None, amount=Decimal("25")):
         recipient = ens.resolve_recipient(cfg)
         item("ENSv2 recipient", "pass", recipient)
     except Exception:
-        item("ENSv2 recipient", "blocked", "Configure the enrolled subname, dedicated resolver and Ethereum Sepolia RPC")
+        item("ENSv2 recipient", "blocked", f"Configure the enrolled subname, dedicated resolver and {ens.network(cfg.ens_network).label} RPC")
 
     try:
         settlement = verify_contract(cfg, w3)
@@ -158,6 +158,8 @@ def stored_payment(path, invoice):
 def build_evidence(cfg, w3, invoice):
     verify_network(cfg, w3)
     request, saved = stored_payment(cfg.db_path, invoice)
+    if request["token"].lower() != TOKEN.lower():
+        raise ValueError("This export is for the official test USDT bounty proof.")
     confirmed = chain.verify_receipt(w3, cfg, request, saved["tx_hash"])
     if (confirmed["block_hash"], confirmed["log_index"]) != (saved["block_hash"], saved["log_index"]):
         raise ValueError("the saved receipt no longer matches the canonical settlement")

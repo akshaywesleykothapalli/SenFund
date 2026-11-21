@@ -1,0 +1,44 @@
+✓ Workflow compiled
+✓ Simulation limits enabled
+  HTTP: req=120kb resp=250kb timeout=10s | ConfHTTP: req=125kb resp=500kb timeout=1m30s | Consensus obs=25kb | ChainWrite evm_report=50kb evm_gas=10000000 solana_report=265b solana_cu=300000 | WASM binary=100mb compressed=20mb
+  Binary hash: ad7a210d2bd5197f6568e40592a75ae1bc3fe704bb695c7c4896e26c49262199
+  Config hash: f5e61350d6001594cfd95c5bc1df70fe72c303eb4eaf2ae69e88e36e7f941305
+✓ Parsed JSON input successfully
+✓ Created HTTP trigger payload with 6 fields
+2026-11-07T10:35:24Z [SIMULATION] Simulator Initialized
+
+2026-11-07T10:35:24Z [SIMULATION] Running trigger trigger=http-trigger@1.0.0-alpha
+
+✓ Workflow Simulation Result:
+{
+  "checks": {
+    "finalizedEns": true,
+    "provider": true,
+    "providerSnapshot": true,
+    "receipt": true
+  },
+  "policy": "senfund-payout-v2",
+  "reason": "Primary is available before dispatch",
+  "receipt": {
+    "attemptKey": "inv_4fe69ac0f479:payout:testnet",
+    "blockHash": "0xdd0d9e3733b2f85ff1af09a4f9bdce910161935a0bbcf7bc58b6803869e051b8",
+    "chainId": 1874,
+    "digest": "0x61cd04d65d85cf34b98689ae4234a207cf2e8bd48794ca06f48711848d5a19ed",
+    "environment": "testnet",
+    "invoice": "inv_4fe69ac0f479",
+    "logIndex": 2,
+    "recipient": "0x09e5f80f0f9c90976116c4f7aec7f484e8181e19",
+    "txHash": "0xca8d066095a407552697f77dc866ae939390712a87e38eabb12dc52efc342c62"
+  },
+  "route": "USE_MUDREX",
+  "run": "ef7b27c0bb794a0db3e04567c7b19b9a"
+}
+
+2026-11-07T10:35:26Z [SIMULATION] Execution finished signal received
+2026-11-07T10:35:26Z [SIMULATION] Skipping WorkflowEngineV2
+
+╭──────────────────────────────────────────────────────╮
+│ Simulation complete! Ready to deploy your workflow?  │
+│                                                      │
+│ Run cre account access to request deployment access. │
+╰──────────────────────────────────────────────────────╯

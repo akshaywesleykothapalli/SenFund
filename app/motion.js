@@ -1,6 +1,6 @@
 "use client";
-import { MotionConfig, motion, useReducedMotion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { MotionConfig, motion, useInView, useReducedMotion } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
 
 const ease = [0.22, 1, 0.36, 1];
 
@@ -32,7 +32,7 @@ const draw = (delay, duration = 0.7) => ({ initial: { pathLength: 0, opacity: 0 
 const show = (delay) => ({ initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.5, delay, ease } });
 
 // Line sketch draws once: invoice -> stablecoin -> local payout. Labels then cycle through example pairs.
-const pairs = [["25 USDT", "₮", "₹", "INR"], ["40 USDC", "$", "€", "EUR"], ["30 USDT", "₮", "£", "GBP"], ["50 USDC", "$", "₱", "PHP"], ["60 USDT", "₮", "R$", "BRL"]];
+const pairs = [["25 USDT", "₮", "₹", "INR"], ["40 USDT", "₮", "€", "EUR"], ["30 USDT", "₮", "£", "GBP"], ["50 USDT", "₮", "₱", "PHP"], ["60 USDT", "₮", "R$", "BRL"]];
 export function Sketch() {
   const reduce = useReducedMotion();
   const [i, setI] = useState(0);
@@ -67,26 +67,32 @@ export function Sketch() {
   );
 }
 
-// "How it works": steps advance one at a time like frames; click to jump.
 export function Pipeline({ steps }) {
+  const list = useRef(null);
+  const inView = useInView(list, { once: true, amount: 0.15 });
   const reduce = useReducedMotion();
-  const [active, setActive] = useState(0);
-  const [auto, setAuto] = useState(!reduce);
-  useEffect(() => {
-    if (!auto || reduce) return;
-    const id = setTimeout(() => setActive((v) => (v + 1) % steps.length), 2800);
-    return () => clearTimeout(id);
-  }, [active, auto, reduce, steps.length]);
+  const visible = inView || reduce;
+
   return (
-    <ol className="pipeline">
+    <ol ref={list} className="pipeline">
       {steps.map(({ title, text, d, sim }, i) => (
-        <li key={title} className={i === active ? "on" : i < active ? "done" : ""}>
-          <button type="button" onClick={() => { setAuto(false); setActive(i); }} aria-current={i === active ? "step" : undefined}>
-            <span className="pipelineIndex"><svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg></span>
-            <h3>{i + 1}. {title}{sim && <em className="simTag">simulated</em>}</h3>
-            <p>{text}</p>
-            {i === active && auto && <motion.i className="pipelineBar" key={active} initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: 2.8, ease: "linear" }} />}
-          </button>
+        <li key={title}>
+          <div className="pipelineCard">
+            <span className="pipelineIndex"><svg aria-hidden="true" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg></span>
+            <div>
+              <h3>{i + 1}. {title}{sim && <em className="simTag">simulated</em>}</h3>
+              <p>{text}</p>
+            </div>
+          </div>
+          {i < steps.length - 1 && <svg className="pipelineArc" aria-hidden="true" viewBox="0 0 144 120" preserveAspectRatio="none" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <motion.path d="M8 4 C93 4 51 116 136 116" vectorEffect="non-scaling-stroke"
+              initial={{ pathLength: 0, opacity: 0 }}
+              animate={{ pathLength: visible ? 1 : 0, opacity: visible ? 1 : 0 }}
+              transition={visible && !reduce ? { duration: 0.47, delay: i * 0.48, ease } : { duration: 0 }} />
+            <motion.path d="M128 110 L136 116 L128 119" vectorEffect="non-scaling-stroke"
+              initial={{ opacity: 0 }} animate={{ opacity: visible ? 1 : 0 }}
+              transition={visible && !reduce ? { duration: 0.14, delay: i * 0.48 + 0.38 } : { duration: 0 }} />
+          </svg>}
         </li>
       ))}
     </ol>

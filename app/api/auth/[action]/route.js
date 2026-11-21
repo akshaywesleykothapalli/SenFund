@@ -1,6 +1,6 @@
 import * as oidc from "openid-client";
 import { NextResponse } from "next/server";
-import { accountCookie, accountMode, accountOrigin, authJson, bridgeHeaders, service, sessionName } from "../../../account-server";
+import { accountCookie, accountMode, accountOrigin, authJson, bridgeHeaders, localAuthMode, service, sessionName } from "../../../account-server";
 
 const flowName = () => accountOrigin().protocol === "https:" ? "__Host-senfund-oidc" : "senfund-oidc";
 const callbackUrl = () => new URL("/api/auth/callback", accountOrigin());
@@ -21,6 +21,10 @@ function redirect(url) {
 export async function GET(request, { params }) {
   if (!accountMode()) return authJson({ error: "Account mode is disabled." }, 404);
   const { action } = await params;
+  if (localAuthMode()) {
+    if (action === "sign-in") return redirect(new URL("/login", accountOrigin()));
+    return authJson({ error: "Page not found." }, 404);
+  }
   if (action !== "sign-in" && action !== "callback") return authJson({ error: "Page not found." }, 404);
 
   try {
@@ -73,24 +77,39 @@ export async function GET(request, { params }) {
 }
 
 export async function POST(request, { params }) {
-  if (!accountMode() || (await params).action !== "sign-out") return authJson({ error: "Page not found." }, 404);
+  const { action } = await params;
+  const passwordAction = localAuthMode() && ["sign-in", "sign-up"].includes(action);
+  if (!accountMode() || (action !== "sign-out" && !passwordAction)) return authJson({ error: "Page not found." }, 404);
   try {
     if (request.headers.get("origin") !== accountOrigin().origin) {
-      return authJson({ error: "Open the SenFund workspace to sign out." }, 403);
+      return authJson({ error: "Open the local SenFund workspace." }, 403);
     }
-    const body = await request.json();
-    const upstream = await fetch(service + "/api/session/sign-out", {
+    if (Number(request.headers.get("content-length")) > 2048) return authJson({ error: "Request too large." }, 413);
+    const raw = await request.text();
+    if (raw.length > 2048) return authJson({ error: "Request too large." }, 413);
+    let body;
+    try { body = JSON.parse(raw); }
+    catch { return authJson({ error: "Enter valid account details." }, 400); }
+    const fields = passwordAction ? { email: body?.email, password: body?.password } : { allSessions: body?.allSessions === true };
+    const upstream = await fetch(service + "/api/session/" + action, {
       method: "POST",
       headers: { ...bridgeHeaders(request), "Content-Type": "application/json" },
-      body: JSON.stringify({ allSessions: body?.allSessions === true }),
+      body: JSON.stringify(fields),
       cache: "no-store",
       signal: AbortSignal.timeout(5000),
     });
+    if (passwordAction) {
+      const data = await upstream.json();
+      if (!upstream.ok) return authJson({ error: data.error || "Unable to sign in." }, upstream.status);
+      const response = authJson({ signedIn: true }, 200);
+      response.cookies.set(sessionName(), data.token, accountCookie(8 * 3600));
+      return response;
+    }
     if (!upstream.ok && upstream.status !== 401) throw new Error("Session could not be revoked.");
     const response = authJson({ signedOut: true }, 200);
     response.cookies.set(sessionName(), "", accountCookie(0));
     return response;
   } catch {
-    return authJson({ error: "Unable to sign out. Try again." }, 503);
+    return authJson({ error: "The local account service is unavailable. Try again." }, 503);
   }
 }

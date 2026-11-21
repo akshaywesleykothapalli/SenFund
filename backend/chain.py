@@ -75,12 +75,14 @@ def verify_receipt(w3, cfg, inv_req: dict, tx_hash: str) -> dict:
     if match is None:
         raise VerificationError("no_settlement_event", "no InvoiceSettled from the trusted contract for this invoice")
     ev = w3.eth.contract(address=cfg.settlement, abi=ABI).events.InvoiceSettled().process_log(match)["args"]
+    allowed = {address.lower() for address, _ in cfg.payment_assets.values()}
+    token = inv_req["token"].lower()
     checks = {
         "digest": _h(ev["digest"]) == inv_req["digest"].lower(),
         "payer": ev["payer"].lower() == tx["from"].lower(),
         "merchant": ev["merchant"].lower() == inv_req["merchant"].lower(),
         "recipient": ev["recipient"].lower() == inv_req["recipient"].lower(),
-        "token": ev["token"].lower() == inv_req["token"].lower() == cfg.token.lower(),
+        "token": ev["token"].lower() == token and token in allowed,
         "amount": int(ev["amount"]) == int(inv_req["amount"]),
     }
     bad = [k for k, ok in checks.items() if not ok]
@@ -90,7 +92,7 @@ def verify_receipt(w3, cfg, inv_req: dict, tx_hash: str) -> dict:
     recipient = bytes.fromhex(ev["recipient"][2:]).rjust(32, b"\0")
     transfers = [
         log["logIndex"] for log in rc["logs"]
-        if log["address"].lower() == cfg.token.lower()
+        if log["address"].lower() == token
         and list(log["topics"]) == [TRANSFER_TOPIC, payer, recipient]
         and len(log["data"]) == 32 and int.from_bytes(log["data"]) == int(ev["amount"])
         and log["logIndex"] < match["logIndex"]
