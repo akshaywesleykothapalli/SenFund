@@ -64,6 +64,28 @@ export function Sketch() {
   </div>;
 }
 
+export function HeroVisual() {
+  const reduce = useReducedMotion();
+  const ref = useRef(null);
+  const visible = useInView(ref, { amount: .15 });
+  const floating = visible && !reduce;
+  return <div className="heroVisual" ref={ref}>
+    <motion.div className="heroArtFrame" initial={{opacity:0,scale:reduce ? 1 : .97}} animate={{opacity:1,scale:1}} transition={{duration:.7,ease}}>
+      <img src="/images/senfund-invoice.webp" alt="A freelancer’s desk overlooking a connected city, illustrated in ink and gold." width="1200" height="800" fetchPriority="high" />
+    </motion.div>
+    <motion.div className="heroInvoiceSlip" animate={{y:floating ? [0,-7,0] : 0,rotate:floating ? [-5,-3,-5] : -5}} transition={{duration:6,repeat:floating ? Infinity : 0,ease:"easeInOut"}}>
+      <div className="slipTop"><span>SenFund<span className="brandDot">.</span></span><span>01 / INVOICE</span></div>
+      <p>TESTNET EXAMPLE</p><strong>25.00 <span>test USDT</span></strong>
+      <div className="slipRule" /><div className="slipBottom"><span>Signed invoice</span><svg aria-hidden="true" width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="m4 10 4 4 8-8" /></svg></div>
+    </motion.div>
+    <motion.div className="heroIdentity" animate={{y:floating ? [0,5,0] : 0}} transition={{duration:5,repeat:floating ? Infinity : 0,ease:"easeInOut"}}>
+      <span className="identityIcon" aria-hidden="true">↗</span><div><strong>Your name. Your wallet.</strong><span>Recipient checked with ENS</span></div>
+    </motion.div>
+    <div className="heroFlowPanel"><div className="heroPanelTop"><span>THE PAYMENT TRAIL</span><span className="heroPanelDot">Testnet + simulation</span></div><Sketch /></div>
+    <span className="heroArtNote">Independent work. Connected payments.</span>
+  </div>;
+}
+
 export function Pipeline({ steps }) {
   const list = useRef(null);
   const inView = useInView(list, { once: true, amount: 0.15 });

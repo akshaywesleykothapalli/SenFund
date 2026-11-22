@@ -2,7 +2,7 @@ import Disclosure from "./disclosure";
 import Logo from "./logo";
 import { connection } from "next/server";
 import { accountMode, localAuthMode } from "./account-server";
-import { Motion, Pipeline, Reveal, Rise, Sketch } from "./motion";
+import { HeroVisual, Motion, Pipeline, Reveal, Rise } from "./motion";
 
 const TX = "0xca8d066095a407552697f77dc866ae939390712a87e38eabb12dc52efc342c62";
 const CONTRACT = "0x613677fc94907367944DE1f0E4B88C44488B9B58";
@@ -58,14 +58,14 @@ export default async function Page() {
       </header>
 
       <main className="siteMain">
-        <section className="hero wrap">
+        <div className="heroBackdrop"><section className="hero wrap">
           <div className="heroCopy">
-            <Rise i={0}><p className="heroBadge">Whitechain Sepolia · Testnet demo</p></Rise>
-            <Rise i={1}><h1>Invoice in USD.<br />Settle in USDT.<br /><em>Your currency. Every step clear.</em></h1></Rise>
-            <Rise i={2}><p className="lede">Send a signed invoice, track the onchain payment, and preview a simulated payout in INR, EUR and more.</p></Rise>
+            <Rise i={0}><p className="heroBadge"><span aria-hidden="true" />Built for work without borders</p></Rise>
+            <Rise i={1}><h1>Invoice in USD.<br />Settle in USDT.<br /><em>Keep the proof.</em></h1></Rise>
+            <Rise i={2}><p className="lede">From the work you deliver to the payment you receive. Share a signed invoice, follow settlement, and keep every step checkable.</p></Rise>
             <Rise i={3} className="heroActions">
-              <a className="button primary big" href={signIn}>Start invoicing</a>
-              <a className="button big" href="#how">See how it works</a>
+              <a className="button primary big" href={signIn}>Start invoicing <span aria-hidden="true">↗</span></a>
+              <a className="button big" href="#payment-proof">Explore payment proof</a>
             </Rise>
             <Rise i={4} className="heroStats">
               <div><strong>Your wallet</strong><span>Direct testnet settlement</span></div>
@@ -73,8 +73,10 @@ export default async function Page() {
               <div><strong>Portable proof</strong><span>Receipts and evidence exports</span></div>
             </Rise>
           </div>
-          <Rise i={2} className="flow"><Sketch /><p className="sketchCaption">Illustrative flow · payout amounts are simulated</p></Rise>
+          <Rise i={2} className="heroVisualWrap"><HeroVisual /></Rise>
         </section>
+        <div className="wrap heroNetworkStrip"><span>WHITECHAIN SEPOLIA</span><span className="stripDivider" aria-hidden="true" /><p>Testnet payments. Conversion and bank payouts are simulated.</p><a href="#how">Follow the five steps <span aria-hidden="true">↓</span></a></div>
+        </div>
 
         <section id="how" className="band">
           <div className="wrap">

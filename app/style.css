@@ -686,3 +686,70 @@ main.authLayout { align-items: center; }
   .proofReceipt { padding: 32px 24px 28px; }
   .proofReceipt .proofFacts div { font-size: 11px; }
 }
+
+/* Illustrated opening scene */
+.heroBackdrop { position: relative; isolation: isolate; background: radial-gradient(ellipse at 77% 36%, #e9d7af4d, transparent 52%), linear-gradient(180deg, #faf7f0, #f4eee2 90%, #faf7f0); border-bottom: 1px solid var(--rule); }
+.heroBackdrop::before { content: ""; position: absolute; z-index: -1; inset: 0; opacity: .24; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.7' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Cpath fill='%238a7759' filter='url(%23n)' opacity='.18' d='M0 0h120v120H0z'/%3E%3C/svg%3E"); pointer-events: none; }
+.heroBackdrop .hero { grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 48px; padding-block: 66px 60px; min-height: 650px; }
+.heroBackdrop .hero h1 { font-size: clamp(40px, 4.6vw, 64px); line-height: 1.07; letter-spacing: -.055em; margin-top: 22px; }
+.heroBackdrop .hero h1 em { color: #9b7739; }
+.heroBackdrop .hero .lede { font-size: 16px; line-height: 1.75; max-width: 38ch; margin-top: 24px; }
+.heroBackdrop .heroBadge { border: 0; background: #eee5d3; padding: 7px 11px; font-size: 10px; color: #6f5c36; letter-spacing: .035em; }
+.heroBadge > span { width: 5px; height: 5px; border-radius: 50%; background: #aa8542; }
+.heroBackdrop .heroActions { gap: 10px; margin-top: 28px; }
+.heroBackdrop .heroActions .button { min-height: 46px; font-size: 12px; padding-inline: 20px; gap: 18px; }
+.heroBackdrop .heroStats { gap: 14px 24px; margin-top: 30px; padding-top: 20px; }
+.heroBackdrop .heroStats strong { font-size: 12px; }
+.heroBackdrop .heroStats span { font-size: 10px; max-width: 17ch; line-height: 1.5; }
+.heroVisualWrap { min-width: 0; width: 100%; }
+.heroVisual { position: relative; width: 100%; padding: 0 0 32px; }
+.heroArtFrame { height: 455px; margin-left: 22px; overflow: hidden; border-radius: 120px 120px 22px 22px; background: #ecdfc3; border: 1px solid #d8c9a9; box-shadow: 0 18px 48px #68522b14; }
+.heroArtFrame img { width: 100%; height: 100%; display: block; object-fit: cover; object-position: 55% center; mix-blend-mode: multiply; }
+.heroInvoiceSlip { position: absolute; top: 36px; left: -20px; width: 235px; padding: 18px 20px; border: 1px solid #dcd2c0; background: #fffdf7; color: var(--ink); box-shadow: 0 12px 32px #4937191f; border-radius: 3px; }
+.slipTop { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.slipTop > span:first-child { font-size: 17px; font-weight: 750; letter-spacing: -.055em; }
+.slipTop > span:last-child { font: 8px ui-monospace, monospace; color: var(--muted); letter-spacing: .06em; }
+.heroInvoiceSlip > p { margin-top: 23px; font: 8px ui-monospace, monospace; letter-spacing: .12em; color: var(--muted); }
+.heroInvoiceSlip > strong { display: block; font-size: 29px; letter-spacing: -.04em; font-weight: 600; margin-top: 4px; }
+.heroInvoiceSlip > strong > span { font-size: 10px; letter-spacing: 0; font-weight: 500; }
+.slipRule { margin: 16px 0 10px; border-top: 1px dashed #d1c3a8; }
+.slipBottom { display: flex; align-items: center; justify-content: space-between; font-size: 10px; color: #6c7556; }
+.heroIdentity { position: absolute; top: 226px; right: -12px; display: flex; align-items: center; gap: 10px; padding: 13px 16px; background: #fffdf7f2; border: 1px solid #dcd2c0; border-radius: 12px; box-shadow: 0 8px 30px #49371914; }
+.identityIcon { width: 28px; height: 28px; border: 1px solid #d6c8a9; border-radius: 50%; display: grid; place-items: center; color: #9b7739; }
+.heroIdentity strong, .heroIdentity div > span { display: block; }
+.heroIdentity strong { font-size: 11px; font-weight: 650; }
+.heroIdentity div > span { font-size: 9px; color: var(--muted); margin-top: 3px; }
+.heroFlowPanel { position: relative; margin: -91px 0 0 42px; padding: 14px 16px 2px; background: #fffdf8f5; backdrop-filter: blur(12px); border: 1px solid #d8cbb3; border-radius: 16px; box-shadow: 0 12px 32px #49371912; }
+.heroPanelTop { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 8px; font-weight: 600; letter-spacing: .07em; color: var(--muted); }
+.heroPanelDot { font-size: 8px; letter-spacing: 0; color: #8f743e; font-weight: 500; }
+.heroFlowPanel .sketchScene { padding: 0; }
+.heroFlowPanel .sketch { max-width: none; }
+.heroArtNote { display: block; margin: 14px 0 0 42px; color: #8a7959; font-size: 9px; letter-spacing: .03em; }
+.heroNetworkStrip { display: flex; align-items: center; gap: 18px; padding-block: 20px; border-top: 1px solid #d9cdb5; font-size: 10px; color: var(--muted); }
+.heroNetworkStrip > span:first-child { font-size: 9px; font-weight: 650; letter-spacing: .1em; white-space: nowrap; color: #695a3b; }
+.stripDivider { height: 14px; width: 1px; background: #d4c6ab; flex: none; }
+.heroNetworkStrip a { margin-left: auto; font-weight: 600; font-size: 10px; white-space: nowrap; text-decoration: none; }
+.heroNetworkStrip a span { margin-left: 12px; }
+@media (max-width: 1000px) {
+  .heroBackdrop .hero { gap: 32px; padding-block: 48px; }
+  .heroInvoiceSlip { left: -4px; width: 205px; padding: 16px; }
+  .heroIdentity { right: -4px; top: 220px; }
+  .heroArtFrame { height: 430px; }
+  .heroBackdrop .heroActions .button { padding-inline: 16px; }
+}
+@media (max-width: 720px) {
+  .heroBackdrop .hero { grid-template-columns: 1fr; gap: 40px; padding-block: 36px 24px; }
+  .heroBackdrop .hero h1 { font-size: clamp(40px, 9vw, 58px); }
+  .heroBackdrop .hero .lede { font-size: 15px; max-width: 40ch; }
+  .heroBackdrop .heroStats { gap: 16px; }
+  .heroBackdrop .heroStats div { flex: 1; }
+  .heroVisual { max-width: 500px; margin: auto; }
+  .heroArtFrame { height: 380px; margin-left: 12px; }
+  .heroInvoiceSlip { top: 24px; left: 0; width: 200px; }
+  .heroIdentity { top: 200px; right: 0; }
+  .heroFlowPanel { margin: -65px 0 0 20px; }
+  .heroArtNote { margin-left: 20px; }
+  .heroNetworkStrip { flex-wrap: wrap; gap: 10px 14px; padding-block: 18px; }
+  .heroNetworkStrip p { flex: 1 1 200px; font-size: 9px; }
+  .heroNetworkStrip a { margin-left: 0; }
+}
