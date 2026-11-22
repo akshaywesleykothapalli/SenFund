@@ -1,119 +1,97 @@
 # SenFund
 
-SenFund lets you send invoices in test USDT or test WBT on Whitechain Sepolia (chain 1874). Each payment is verified onchain. USDT conversion and fiat payout are **simulated**. WBT invoices settle directly to the invoice recipient as wrapped WBT. Mainnet settlement and live payouts are disabled.
+### Cross-border invoices with a payment trail you can verify
 
-Why onchain settlement: the payment receipt is a public, final event anyone can verify, so the merchant never has to trust a processor's word that a customer paid.
+SenFund helps freelancers send signed invoices, accept wallet payments, and keep a clear record of settlement. Clients pay through a shareable checkout link. Merchants follow the payment in their workspace and download receipts and evidence for their records.
 
-## Setup
+The current build runs on **Whitechain Sepolia**. Onchain payments use test tokens. Currency conversion and bank payouts are simulated.
 
-Use Python 3.13 and Node.js 24 or later. The Next.js workspace and its HTTP API use the existing local Python settlement service for invoice signing, persistence, reconciliation and the CRE runner. Checkout is served independently so payer links keep working when either merchant process stops.
-```
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-npm ci
-(cd contracts && npm ci)
-.venv/bin/python scripts/compile.py
-```
+![SenFund illustration of invoices connecting independent work across borders](public/images/senfund-footer.webp)
 
-## Run locally (no testnet needed)
-Run each command in its own terminal:
-```
-.venv/bin/python scripts/local_chain.py                 # local RPC :8545, writes deployments/local.json
-SENFUND_ENV=local .venv/bin/python -m backend.server     # app + dashboard :8700
-SENFUND_ENV=local bash scripts/run_static.sh             # merchant site :8701, checkout :8702
-npm run dev                                              # Next.js merchant workspace :3000
-```
-The checkout (:8702) is static and reads the chain directly, so payers can still pay and verify while the app is stopped. The dashboard scans recent confirmed blocks while catching up on older blocks. If a receipt has yet to appear, paste its payment transaction hash into the invoice’s **Submit tx hash** field.
+## How it works
 
-## Whitechain Sepolia
-1. Configure test-only keys from `.env.example`. Fund the payer with official test USDT and WBT, and the deployer with WBT.
-2. Configure an enrolled merchant subname in ENSv2 on Ethereum Sepolia. See [ENSv2 setup](docs/ENS_SETUP.md).
-3. Run `.venv/bin/python scripts/deploy.py`. Verify the contract on the Whitechain explorer using `contracts/out/SenFundSettlement.standard-input.json`.
-4. Start the backend, `npm run dev` and `bash scripts/run_static.sh` in separate terminals. Open the [Next.js merchant workspace](http://127.0.0.1:3000/). The workspace binds to loopback for this demo. The static script builds `checkout/trust.json`. For separate hosting, publish the checkout directory including that generated file. Use a dedicated public, browser-accessible ENS RPC with no secrets.
-5. Issue a new invoice, pay with the browser wallet and record the explorer transaction. For a command-line smoke test, use `.venv/bin/python scripts/pay.py <invoice-id>`.
+1. **Create an invoice.** Enter the client, service description, amount and payment asset. USDT invoices also support a local payout corridor.
+2. **Share the signed link.** The payment request protects the amount, asset and receiving address.
+3. **Pay from a wallet.** Checkout validates the request and checks the recipient against the configured ENS record before approval.
+4. **Verify settlement.** The workspace reconciles the confirmed payment and shows its public transaction reference.
+5. **Keep the receipt.** Download the payment receipt or evidence pack. For USDT invoices, explore a separate simulated conversion and bank payout.
 
-Existing deployment metadata without a domain name uses its original signing domain, and older environment variables and default database paths are still recognized. New deployments use the SenFund domain. Use a fresh database when intentionally switching to a new deployment, so stored invoices stay associated with the contract that signed them.
+## What you can do
 
-## Choose the invoice payment asset
+### Merchant workspace
 
-Choose **USDT** to demo the simulated conversion and Chainlink payout. The client wallet needs official test USDT plus test WBT for network fees. Choose **WBT** to bill in WBT units. Checkout asks the payer to wrap any shortfall into WWBT before approval and settlement. Existing WWBT can be used directly. The invoice records the chosen asset in the signed request. Use a client wallet different from the receiving wallet.
+- See receiving-wallet balances and verified incoming payments.
+- Search invoices by client, description, invoice ID or transaction.
+- Filter awaiting payments, settled invoices, items needing attention and completed payout simulations.
+- Follow settlement, conversion and payout as separate stages.
+- Inspect fees, route decisions and timestamped activity.
+- Export receipts, evidence packs and a payment statement.
 
-## Verified demo
+### Independent checkout
 
-Invoice `inv_4fe69ac0f479` settled **3 test USDT** to the Whitechain address resolved from `merchant.senfund.eth` on Ethereum Sepolia. After the ENS registration finalized, the local Chainlink CRE simulation selected Mudrex and recorded a simulated **₹160.00** payout.
+Clients can open an invoice link without creating an account. Checkout uses the signed payment details and public chain reads, so an already issued link can still settle while the merchant service is offline, provided checkout hosting and its RPC services remain available. The merchant service reconciles confirmed payments when it returns.
 
-- [ENSv2 merchant name](https://sepolia.explorer.ens.domains/merchant.senfund.eth)
-- [Whitechain settlement transaction](https://explorer.testnet.whitechain.io/tx/0xca8d066095a407552697f77dc866ae939390712a87e38eabb12dc52efc342c62)
-- [Verified settlement contract](https://explorer.testnet.whitechain.io/address/0x613677fc94907367944DE1f0E4B88C44488B9B58?tab=contract)
+### Wallets and payment assets
 
-## Public demo evidence
+Test USDT invoices support the simulated conversion and payout flow. Test WBT invoices settle to the signed recipient as wrapped WBT. Checkout can wrap the payer's WBT shortfall before approval.
 
-Run `.venv/bin/python scripts/demo.py check --payer <public-address> --deployer <public-address>` for a read-only readiness report. The check uses a 25 USDT demo amount by default. Pass `--amount` for another invoice amount. The report checks Whitechain, the official token, funding, ENS resolution, the deployed contract and the CRE login.
+Account mode supports wallet ownership proofs through a signed message. The current account experience is a local pilot with operator-controlled invoice issuance.
 
-After Whitechain source verification and a confirmed invoice payment, run `.venv/bin/python scripts/demo.py evidence <invoice-id>`. The exporter checks the canonical receipt and the matching official USDT transfer, then prints public JSON containing the explorer links, token amount and log indexes. Save the JSON if you need a machine-readable record for submission.
+### Local currency previews
 
-## Demo both payout routes
+USDT invoices can preview payouts in INR, EUR, GBP, PHP, NGN, BRL, MXN, KES and AED. Quotes use fixture exchange rates and fees. They are simulated estimates.
 
-Create and pay a separate test invoice for each run, verify its onchain payment, and run simulated USD conversion.
+The payout demo supports a primary route, a protected P2P fallback when the primary is unavailable before dispatch, and a hold when the outcome of a previous attempt is uncertain. An uncertain primary attempt is reconciled before another payout can proceed.
 
-- **Mudrex succeeds** completes the simulated INR payout on the primary route.
-- **Mudrex unavailable → Protected P2P fallback** opens a simulated P2P order. The simulated payout waits for simulated bank credit (**Simulate bank credit**). The receipt records the route, fallback reason, and simulated order reference.
-- **Mudrex accepts order, response lost** puts the payout on hold. Re-running checks the saved order before retrying. An uncertain primary order never triggers a second payout through P2P.
+## Recorded payment proof
 
-Both routes use local fixtures and move zero real INR. Live routes require separate provider approval, a supported production network, and verified bank payout evidence.
+Invoice **inv_4fe69ac0f479** settled **3 test USDT** to the Whitechain address resolved from **merchant.senfund.eth**. The public receipt is recorded at block **12,352,312** on chain **1874**.
+
+| Record | Verification |
+| --- | --- |
+| Payment | [Inspect the recorded test-USDT transaction](https://explorer.testnet.whitechain.io/tx/0xca8d066095a407552697f77dc866ae939390712a87e38eabb12dc52efc342c62) |
+| Settlement contract | [Inspect the source-verified contract](https://explorer.testnet.whitechain.io/address/0x613677fc94907367944DE1f0E4B88C44488B9B58?tab=contract) |
+| Merchant name | [Inspect the ENS name on Sepolia](https://sepolia.explorer.ens.domains/merchant.senfund.eth) |
+
+Onchain stablecoin settlement gives the payer and merchant a shared public record of the signed amount and destination, which can be checked independently of SenFund's database.
+
+## Integrations
+
+**Whitechain** provides the testnet settlement rail and public payment record.
+
+**ENS** resolves the configured recipient and lets checkout detect a receiving-address mismatch before approval. Record changes block stale links in checkout. Existing contract signatures expire or require onchain cancellation to revoke them.
+
+**Chainlink CRE** can gate simulated payout routing using settlement, ENS and provider evidence. The optional **Chainlink Local CCIP** demo records a payout decision in a local EVM. That CCIP demonstration runs locally.
 
 ## CROPS
 
-**Censorship resistance.** Checkout is static and reads Whitechain directly. Payers can pay and verify an invoice while SenFund is offline.
+**Censorship resistance.** Independent checkout lets an existing invoice settle while the merchant service is offline. Checkout hosting, wallet RPC and ENS RPC remain dependencies.
 
-**Open source.** MIT licensed.
+**Open source.** SenFund is available under the MIT license. The repository includes the application, contracts and supporting documentation.
 
-**Privacy.** Invoice descriptions, client names, emails and bank details never go onchain or into checkout links. The evidence pack also leaves them out.
+**Privacy.** Checkout requests exclude private invoice descriptions, client names, email addresses and bank details. The merchant service stores account and invoice information locally. Wallet and ENS RPC providers can observe requests made to them. Public settlement exposes wallet addresses and token amounts.
 
-**Security.** Invoices are EIP-712 signed. Checkout checks the merchant's ENS record before payment. The contract accepts each invoice once.
+**Security.** Signed payment requests protect invoice terms, checkout validates the configured recipient, and the contract enforces single settlement. Account mode applies invoice ownership checks. The current demo uses a configured merchant signer, and public deployment requires further review.
 
-Whitechain settlement is needed because it gives a public, final record that the client paid the exact signed invoice, which no merchant database can prove alone.
+## Current scope
 
-| Evidence | Link |
-|---|---|
-| Verified settlement contract | [0x6136…9B58](https://explorer.testnet.whitechain.io/address/0x613677fc94907367944DE1f0E4B88C44488B9B58?tab=contract) |
-| Official test-USDT payment | [0xca8d…2c62](https://explorer.testnet.whitechain.io/tx/0xca8d066095a407552697f77dc866ae939390712a87e38eabb12dc52efc342c62) |
+- Whitechain settlement uses test tokens with no monetary value.
+- Currency conversion, provider orders and bank credits are simulated.
+- Live payouts, a real P2P escrow and a partner marketplace are outside the current build.
+- Account mode is a local pilot. Multi-freelancer enrolment and production identity flows require additional work.
+- Public ENS rotation and delegation proofs, a recorded testnet outage run, a hosted demo and a final walkthrough video remain submission tasks.
 
-Pending: ENS rotation, replacement payment, scoped delegation, outage recovery, live URL, video.
+## Project documentation
 
-## Chainlink CRE
+- [Product overview](PRODUCT.md)
+- [Requirements and release criteria](docs/SenFund%20Requirements.md)
+- [Account pilot status](docs/SRS_IMPLEMENTATION.md)
+- [ENS setup](docs/ENS_SETUP.md)
+- [Chainlink workflow demo](cre/README.md)
+- [Local CRE and CCIP demonstration](docs/CHAINLINK_LOCAL_DEMO.md)
+- [Submission checklist](docs/SUBMISSION.md)
+- [Whitechain feedback](WHITECHAIN_FEEDBACK.md)
 
-[Run the Chainlink CRE payout demo](cre/README.md). Set `SENFUND_CRE_PAYOUTS=1` to gate the dashboard payout behind the CLI simulation.
+## License
 
-## Tests
-```
-.venv/bin/python -m pytest -q tests
-node --test tests/checkout.test.cjs tests/api-route.test.mjs
-npm run build
-```
-The tests cover tampered invoices, wrong chain or token, duplicate settlement, uncertain payout retries, and recovery with the app stopped. GitHub Actions builds the contracts, runs these suites, and checks the CRE workflow types without testnet keys.
-
-## Submission docs
-`docs/SenFund Requirements.md`, `docs/BUILD_PLAN.md`, `docs/prompts/`, `AI_USE.md`, `THIRD_PARTY_NOTICES.md`, `WHITECHAIN_FEEDBACK.md`.
-
-## Invoice creation retries
-
-Send an `Idempotency-Key` header when creating an invoice through the local merchant API. Generate a new key for each intended invoice, and reuse it when retrying the same request after a timeout. The service returns the original invoice and checkout link, including after a restart. Reusing a key with different invoice details returns HTTP 409.
-
-The responsive website and a future mobile client can share the invoice contract and signed checkout format. The current merchant API binds to loopback. A native client on a separate device requires an authenticated, HTTPS merchant API deployment.
-
-## Account pilot
-
-The [SRS implementation tracker](docs/SRS_IMPLEMENTATION.md) describes the optional OpenID Connect account mode, invoice ownership migration and current acceptance gaps.
-
-## Wallet and corridors
-
-- Each user links a Whitechain Sepolia (chain 1874) wallet by signing a personal_sign proof. The user signs in their own wallet.
-- The Wallet view shows testnet balances from `GET /api/balance/<address>` (400 for a bad address, 502 if the RPC fails).
-- "Withdraw to bank" gives a quote only (amount × rate − fee). It is labelled "Simulated — no money moves".
-- Clients pay in test USDT. Corridors come from `/api/config`: IN, EU, MX, KE, AE and more. Conversion and payout stay simulated.
-
-## Share checkout outside your network
-
-Serve only the static `checkout/` directory on port 8702 through an HTTPS tunnel or static host. Set `SENFUND_CHECKOUT_URL` to that public address and restart the backend. Copy a payment link again from the invoice to get the updated origin. The signed request travels in the link fragment. The merchant workspace and its APIs stay on loopback. A temporary tunnel URL lasts only while the tunnel is up.
-
-Enable `SENFUND_LOCAL_AUTH=1` with a random bridge secret, a seeded admin password hash and a loopback app origin. Local accounts use salted scrypt hashes in SQLite and require no email verification. The admin is the configured invoice-signing operator and can view the existing local invoice register. The Dashboard shows live balances for the receiving wallet and a CSV statement of verified SenFund payments to that address.
+[MIT](LICENSE) · SenFund team

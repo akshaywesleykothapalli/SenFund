@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Logo from "./logo";
+import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "framer-motion";
 
 const expired = invoice => invoice.payment === "OPEN" && invoice.expiresAt && invoice.expiresAt * 1000 < Date.now();
 
@@ -69,6 +71,22 @@ function nextStep(invoice, payout) {
   if (invoice.payout === "FAILED") return "Simulated payout failed. See the payout section.";
   if (invoice.payout === "ON_HOLD") return payout?.detail.route === "p2p" ? "Pending bank credit (simulated). Next: simulate bank credit." : "Provider hold. Checking order status before any retry.";
   return "Converted. Next: run the simulated payout.";
+}
+
+function InvoiceSummary({ invoices, onSelect }) {
+  const groups = [
+    { id: "awaiting", title: "Awaiting payment", count: invoices.filter(i => ["OPEN", "SUBMITTED"].includes(i.payment) && !expired(i)).length, note: "Open links and confirmations", icon: navIcons.invoices },
+    { id: "paid", title: "Settled onchain", count: invoices.filter(i => i.payment === "PAID").length, note: "Verified testnet payments", icon: navIcons.wallet },
+    { id: "attention", title: "Needs attention", count: invoices.filter(i => i.needsReview || i.payout === "ON_HOLD" || i.payout === "FAILED" || expired(i)).length, note: "Reviews, holds and expired links", icon: navIcons.how },
+    { id: "complete", title: "Payout complete", count: invoices.filter(i => i.payout === "COMPLETED").length, note: "Simulated bank payouts", icon: navIcons.explorer },
+  ];
+  return <section className="summaryGrid" aria-label="Invoice overview">
+    {groups.map(group => <motion.button key={group.id} className="summaryCard" onClick={() => onSelect(group.id)}
+      whileHover={{ y: -3 }} whileTap={{ scale: 0.99 }}>
+      <span className="summaryLabel"><NavIcon d={group.icon} />{group.title}</span>
+      <strong>{group.count}</strong><small>{group.note}</small>
+    </motion.button>)}
+  </section>;
 }
 
 function InvoiceForm({ busy, onCreate, corridors, assets }) {
@@ -146,6 +164,8 @@ function InvoiceDetail({ invoice, config, busy, onAction, onClose, onCopy }) {
       <div><dt>Settlement</dt><dd>{expired(invoice) ? <span className="state bad">Expired</span> : <Status value={invoice.payment} />}</dd></div>
       {invoice.expiresAt && <div><dt>Checkout expires</dt><dd>{date(invoice.expiresAt)}</dd></div>}
       <div><dt>Created</dt><dd>{date(invoice.createdAt)}</dd></div>
+      <div><dt>Network</dt><dd>Whitechain Sepolia · {config.chainId}</dd></div>
+      {asset === "USDT" && <div><dt>Payout corridor</dt><dd>{invoice.corridor ?? "IN"} · {config.corridors?.[invoice.corridor ?? "IN"]?.currency ?? "Local currency"} (simulated)</dd></div>}
       {invoice.recipient && <div className="wide"><dt>Settlement recipient</dt><dd><code>{invoice.recipient}</code></dd></div>}
       {invoice.txHash && <div className="wide"><dt>Transaction</dt><dd><code>{invoice.txHash}</code></dd></div>}
     </dl>
@@ -187,6 +207,13 @@ function InvoiceDetail({ invoice, config, busy, onAction, onClose, onCopy }) {
           <div className="hashForm"><label>Scenario<select value={scenario} onChange={event => setScenario(event.target.value)}>
             {scenarios.map(([value, text]) => <option value={value} key={value}>{text}</option>)}
           </select></label><button disabled={busy} onClick={() => onAction("payout", { scenario })}>{config.localCcip ? "Run CRE + CCIP simulation" : config.crePayouts ? "Run CRE simulation" : "Simulate payout"}</button></div>}
+        {payout?.detail.amount != null && <dl className="quoteBreakdown">
+          <div><dt>Net payout</dt><dd>{payout.detail.amount} {payout.detail.currency}</dd></div>
+          <div><dt>Payout fee</dt><dd>{payout.detail.fee ?? "—"} {payout.detail.currency}</dd></div>
+          <div><dt>Fixture rate</dt><dd>{payout.detail.rate ?? "—"} {payout.detail.currency} / USD</dd></div>
+          <div><dt>Pricing</dt><dd>Simulated</dd></div>
+        </dl>}
+        {payout?.detail.fallback_reason && <p className="note">{payout.detail.fallback_reason}</p>}
         {payout && <p className={`advisor ${invoice.payout === "ON_HOLD" ? (payout.detail.route === "p2p" ? "credit" : "hold") : ""}`}>{advisor(invoice, payout)}</p>}
         {canSimulate && invoice.payout === "ON_HOLD" && payout?.detail.route === "p2p" && payout.reference &&
           <button disabled={busy} onClick={() => onAction("simulate-p2p-credit", {})}>Simulate bank credit</button>}
@@ -248,7 +275,7 @@ function CashOut({ invoices, corridors, onOrder }) {
         </select></label>
       </fieldset>
       {error && <p role="alert" className="alert">{error}</p>}
-      {quote && <p className="note" role="status"><strong>Estimated bank credit {quote.amount} {quote.currency}</strong> for {quote.inputUsdt} USDT. Includes a {quote.conversionFeeUsd} USD conversion fee and a {quote.fee} {quote.currency} payout fee.</p>}
+      {quote && <p className="note" role="status"><strong>Simulated estimated bank credit {quote.amount} {quote.currency}</strong> for {quote.inputUsdt} USDT. Includes a {quote.conversionFeeUsd} USD conversion fee and a {quote.fee} {quote.currency} payout fee.</p>}
       <div className="actions">
         <button type="submit" disabled={!invoice || !corridor || busy}>Get simulated quote</button>
         {quote && <button type="button" className="primary" disabled={!invoice || busy} onClick={() => request(true)}>Confirm simulated P2P order</button>}
@@ -411,6 +438,9 @@ function MerchantOverview({ onInvoices, onCashOut }) {
 }
 
 export default function Workspace({ accountsEnabled }) {
+  const reduceMotion = useReducedMotion();
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("all");
   const [profile, setProfile] = useState(null);
   const [wallets, setWallets] = useState([]);
   const [signedOut, setSignedOut] = useState(false);
@@ -523,16 +553,29 @@ export default function Workspace({ accountsEnabled }) {
     <a className="button primary" href="/api/auth/sign-in">Sign in or register</a></header></main>;
 
   const showTreasury = !accountsEnabled || profile?.canIssue;
-  return <div className="shell">
+  const filtered = invoices.filter(invoice => {
+    const matches = [invoice.id, invoice.customer, invoice.description, invoice.asset, invoice.txHash]
+      .some(value => String(value ?? "").toLowerCase().includes(query.trim().toLowerCase()));
+    if (!matches) return false;
+    if (filter === "awaiting") return ["OPEN", "SUBMITTED"].includes(invoice.payment) && !expired(invoice);
+    if (filter === "paid") return invoice.payment === "PAID";
+    if (filter === "attention") return invoice.needsReview || invoice.payout === "ON_HOLD" || invoice.payout === "FAILED" || expired(invoice);
+    if (filter === "complete") return invoice.payout === "COMPLETED";
+    return true;
+  });
+  function showFiltered(value) { setFilter(value); setQuery(""); setView("invoices"); }
+
+  return <MotionConfig reducedMotion="user"><div className="shell">
     <aside className="rail" aria-label="Workspace">
-      <a className="brand" href="/">SenFund<span>Merchant workspace</span></a>
+      <Logo className="brand" caption="Merchant workspace" />
       <p className="railNavLabel">Workspace</p>
       <nav>{[...(showTreasury ? [["overview", "Dashboard"]] : []), ["invoices", "Invoices"], ["wallet", "Wallet"]].map(([id, text]) =>
-        <a key={id} href={"#" + id} aria-current={view === id ? "page" : undefined} onClick={event => { event.preventDefault(); setView(id); setError(""); setStatus(""); }}><NavIcon d={navIcons[id]} />{text}</a>)}
+        <a key={id} href={"#" + id} aria-current={view === id ? "page" : undefined} onClick={event => { event.preventDefault(); setView(id); setError(""); setStatus(""); }}><NavIcon d={navIcons[id]} />{text}{view === id && <motion.span className="navMarker" layoutId="workspace-nav" transition={{ type: "spring", stiffness: 400, damping: 35 }} />}</a>)}
         <p className="railNavLabel">Resources</p>
         {config?.explorer && <a href={config.token ? `${config.explorer}/address/${config.token}` : config.explorer} target="_blank" rel="noreferrer"><NavIcon d={navIcons.explorer} />Block explorer</a>}
         <a href="/#how"><NavIcon d={navIcons.how} />How settlement works</a>
         {profile && !wallets.length && view === "invoices" && <p className="railHint">Verify a wallet before you issue invoices.</p>}</nav>
+      <div className="railFooter"><p>Settlement network</p><strong><span className={config ? "dot live" : "dot"} />{config ? "Whitechain Sepolia" : "Connecting…"}</strong><span className="muted">Test assets · simulated payouts</span></div>
     </aside>
     <main id="invoices">
       <div className="topline"><span>Merchant workspace</span><span className="toplineRight"><span className="environment">{config?.env === "testnet" ? "Testnet" : config?.env ?? (loading ? "Connecting" : "Offline")}</span>
@@ -542,6 +585,10 @@ export default function Workspace({ accountsEnabled }) {
               <button key={id} type="button" onClick={event => { event.currentTarget.closest("details").open = false; setView(id); setError(""); setStatus(""); }}>{text}</button>)}
             <button type="button" disabled={!!busy} onClick={() => run("sign-out", async () => { await api("auth/sign-out", {}); location.reload(); })}>Sign out</button>
           </div></details>}</span></div>
+      <motion.div key={view} className="workspaceView" initial={{ opacity: 0, y: reduceMotion ? 0 : 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduceMotion ? 0 : 0.24 }}>
+      {(view === "overview" || view === "wallet") && error && <p className="alert" role="alert">{error}</p>}
+      {(view === "overview" || view === "wallet") && status && <p className="feedback" role="status">{status}</p>}
+      {view === "overview" && showTreasury && !loading && <InvoiceSummary invoices={invoices} onSelect={showFiltered} />}
       {view === "overview" && showTreasury ? <MerchantOverview onInvoices={() => setView("invoices")} onCashOut={() => setView("wallet")} /> : view === "wallet" ? <WalletView
         wallets={wallets} invoices={invoices} corridors={config?.corridors} canCashOut={showTreasury}
         disabled={!!busy} onLink={linkWallet} canVerify={!!profile} accountsEnabled={accountsEnabled}
@@ -556,7 +603,8 @@ export default function Workspace({ accountsEnabled }) {
         <div><h1>Invoices</h1><p>Issue invoices and track settlement and simulated payouts.</p></div>
         <button className="primary" disabled={!config || !!busy || (accountsEnabled && !profile?.canIssue)} onClick={() => setShowForm(!showForm)}>{showForm ? "Close form" : "New invoice"}</button>
       </header>
-      <p className="notice">Clients pay in the test asset selected when the invoice was signed.</p>
+      {!loading && config && <InvoiceSummary invoices={invoices} onSelect={showFiltered} />}
+      <p className="notice">Whitechain Sepolia · payments settle to the signed recipient. Conversion and bank payouts are simulated.</p>
       {error && <p role="alert" className="alert">{error}</p>}
       <div className="feedback" role="status">{status}</div>
       {config && !loading && invoices.length === 0 && !showForm && <section className="onboarding" aria-labelledby="onboarding-title">
@@ -568,28 +616,41 @@ export default function Workspace({ accountsEnabled }) {
         </ol>
         <button className="primary" disabled={!!busy || (accountsEnabled && !profile?.canIssue)} onClick={() => setShowForm(true)}>Create first invoice</button>
       </section>}
-      {showForm && <InvoiceForm busy={!!busy} onCreate={create} corridors={config?.corridors} assets={config?.paymentAssets} />}
+      <AnimatePresence initial={false}>
+        {showForm && <motion.div key="invoice-form" initial={{ opacity: 0, height: reduceMotion ? "auto" : 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: reduceMotion ? "auto" : 0 }} transition={{ duration: 0.22 }} style={{ overflow: "hidden" }}>
+          <InvoiceForm busy={!!busy} onCreate={create} corridors={config?.corridors} assets={config?.paymentAssets} />
+        </motion.div>}
+      </AnimatePresence>
       <div className={selected ? "board open" : "board"}>
       <section className="register" aria-labelledby="register-title">
         <div className="registerTop"><div><h2 id="register-title">Invoice register</h2>{config && <p>{invoices.length} {invoices.length === 1 ? "invoice" : "invoices"}</p>}</div><button disabled={!!busy || loading} onClick={reload}>{busy === "refresh" ? "Refreshing…" : "Refresh"}</button></div>
-        {loading ? <p className="empty">Loading invoices…</p> :
+        <div className="registerTools">
+          <label className="searchField"><span>Search invoices</span><input type="search" placeholder="Client, invoice, description or transaction" value={query} onChange={event => setQuery(event.target.value)} /></label>
+          <label><span>Status</span><select value={filter} onChange={event => setFilter(event.target.value)}>
+            <option value="all">All invoices</option><option value="awaiting">Awaiting payment</option><option value="paid">Settled onchain</option><option value="attention">Needs attention</option><option value="complete">Simulated payout complete</option>
+          </select></label>
+          {(query || filter !== "all") && <button className="plain" onClick={() => { setQuery(""); setFilter("all"); }}>Clear filters</button>}
+        </div>
+        {config && !loading && <p className="resultCount" aria-live="polite">{filtered.length} of {invoices.length} invoices</p>}
+        {loading ? <div className="loadingRows" role="status"><span>Loading your invoice register…</span><i /><i /><i /></div> :
           !config ? <p className="empty">Connect the local settlement service to view invoices.</p> :
           invoices.length === 0 ? <p className="empty">No invoices yet. Create an invoice to get a payment link.</p> :
+          filtered.length === 0 ? <div className="empty"><h3>No matching invoices</h3><p>Try another client name or status.</p><button onClick={() => { setQuery(""); setFilter("all"); }}>Show all invoices</button></div> :
           <div className="tableScroll"><table>
             <thead><tr><th scope="col">Invoice</th><th scope="col">Amount</th><th scope="col">Settlement</th><th scope="col">Payout simulation</th><th scope="col">Details</th></tr></thead>
-            <tbody>{invoices.map(invoice => <tr key={invoice.id} className={selected?.id === invoice.id ? "selected" : undefined}>
-              <th scope="row"><strong>{invoice.customer || invoice.id}</strong><code>{invoice.id}</code></th>
+            <tbody>{filtered.map(invoice => <tr key={invoice.id} className={selected?.id === invoice.id ? "selected" : undefined}>
+              <th scope="row"><strong>{invoice.customer || invoice.id}</strong><span className="invoiceDescription">{invoice.description}</span><code>{invoice.id}</code><span className="invoiceDate">{date(invoice.createdAt)}</span></th>
               <td className="amount" data-label="Amount">{invoice.usd} <span>{invoice.asset ?? "USDT"}</span></td>
               <td data-label="Settlement">{expired(invoice) ? <span className="state bad">Expired</span> : <Status value={invoice.payment} />}</td><td data-label="Payout simulation">{invoice.asset === "WBT" ? "Wallet settlement" : <Status value={invoice.payout} />}</td>
-              <td><button className="plain" data-opens="1" disabled={!!busy} onClick={() => run("open", () => open(invoice.id))} aria-label={`Open invoice ${invoice.id}`}>Open details</button></td>
+              <td data-label="Actions"><button className="plain" data-opens="1" disabled={!!busy} onClick={() => run("open", () => open(invoice.id))} aria-label={`Open invoice ${invoice.id}`}>Open details</button></td>
             </tr>)}</tbody>
           </table></div>}
       </section>
-      {selected && <InvoiceDetail key={selected.id} invoice={selected} config={config} busy={!!busy}
+      <AnimatePresence mode="wait" initial={false}>{selected && <motion.div key={selected.id} className="detailPane" initial={{ opacity: 0, x: reduceMotion ? 0 : 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}><InvoiceDetail invoice={selected} config={config} busy={!!busy}
         onAction={update} onClose={() => setSelected(null)} onCopy={link => run("copy", async () => {
           await navigator.clipboard.writeText(link);
           setStatus("Payment link copied.");
-        })} />}
+        })} /></motion.div>}</AnimatePresence>
       </div>
       </> : <>
       <header className="heading"><div><h1>Account</h1><p>Profile, sign in and wallet ownership.</p></div></header>
@@ -617,6 +678,7 @@ export default function Workspace({ accountsEnabled }) {
       </form>}
       {profile && <Wallets wallets={wallets} disabled={!!busy} onLink={linkWallet} />}
       </>}
+      </motion.div>
     </main>
-  </div>;
+  </div></MotionConfig>;
 }

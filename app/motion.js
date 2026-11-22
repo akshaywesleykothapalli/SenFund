@@ -1,5 +1,5 @@
 "use client";
-import { MotionConfig, motion, useInView, useReducedMotion } from "framer-motion";
+import { AnimatePresence, MotionConfig, motion, useInView, useReducedMotion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 
 const ease = [0.22, 1, 0.36, 1];
@@ -28,43 +28,40 @@ export const Item = (props) => (
   <motion.li variants={{ hide: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0, transition: { duration: 0.5, ease } } }} {...props} />
 );
 
-const draw = (delay, duration = 0.7) => ({ initial: { pathLength: 0, opacity: 0 }, animate: { pathLength: 1, opacity: 1 }, transition: { duration, delay, ease } });
-const show = (delay) => ({ initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.5, delay, ease } });
-
-// Line sketch draws once: invoice -> stablecoin -> local payout. Labels then cycle through example pairs.
-const pairs = [["25 USDT", "₮", "₹", "INR"], ["40 USDT", "₮", "€", "EUR"], ["30 USDT", "₮", "£", "GBP"], ["50 USDT", "₮", "₱", "PHP"], ["60 USDT", "₮", "R$", "BRL"]];
+const pairs = [["25 USDT", "₹", "INR"], ["40 USDT", "€", "EUR"], ["30 USDT", "£", "GBP"], ["50 USDT", "₱", "PHP"], ["60 USDT", "R$", "BRL"]];
 export function Sketch() {
   const reduce = useReducedMotion();
-  const [i, setI] = useState(0);
-  useEffect(() => { if (reduce) return; const t = setInterval(() => setI((n) => (n + 1) % pairs.length), 3200); return () => clearInterval(t); }, [reduce]);
-  const [amount, coin, sign, cur] = pairs[i];
-  const swap = (d) => (i ? { initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.4, ease } } : show(d));
-  const text = { fill: "currentColor", stroke: "none", fontWeight: 700 };
-  const label = { ...text, fontSize: 11, fontWeight: 600, opacity: 0.6, textAnchor: "middle" };
-  return (
-    <svg className="sketch" viewBox="0 0 480 220" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="A stablecoin invoice settles onchain and is paid out in a local currency such as INR, EUR or GBP (simulated)" role="img">
-      <motion.path d="M40 40h70l22 22v118H40z M110 40v22h22 M56 86h56 M56 106h56 M56 126h36" {...draw(0.1, 0.9)} />
-      <motion.text x="56" y="160" fontSize="15" {...text} key={"a"+i} {...swap(0.8)}>{amount}</motion.text>
-      <motion.text x="86" y="204" {...label} {...show(0.8)}>Invoice</motion.text>
-
-      <motion.path d="M150 110H198" {...draw(1.0, 0.45)} />
-      <motion.path d="M190 102l8 8-8 8" {...draw(1.4, 0.2)} />
-
-      <motion.g style={{ transformOrigin: "240px 110px" }} initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 1.5, type: "spring", stiffness: 260, damping: 20 }}>
-        <circle cx="240" cy="110" r="34" />
-        <circle cx="240" cy="110" r="25" strokeDasharray="2 5" opacity="0.5" />
-        <text x="240" y="117" fontSize="20" textAnchor="middle" {...text}>{coin}</text>
-      </motion.g>
-      <motion.text x="240" y="204" {...label} {...show(1.7)}>Verified onchain</motion.text>
-
-      <motion.path d="M282 110H338" {...draw(2.0, 0.45)} />
-      <motion.path d="M330 102l8 8-8 8" {...draw(2.4, 0.2)} />
-
-      <motion.path d="M360 90l50-28 50 28z M368 96v64 M388 96v64 M432 96v64 M452 96v64 M356 168h108" {...draw(2.5, 0.9)} />
-      <motion.text x="410" y="138" fontSize="20" textAnchor="middle" {...text} key={"s"+i} {...swap(3.2)}>{sign}</motion.text>
-      <motion.text x="410" y="204" {...label} key={"c"+i} {...swap(3.2)}>{cur} payout · simulated</motion.text>
+  const target = useRef(null);
+  const inView = useInView(target, { amount: 0.15 });
+  const [index, setIndex] = useState(0);
+  const running = inView && !reduce;
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => setIndex(value => (value + 1) % pairs.length), 3000);
+    return () => clearInterval(timer);
+  }, [running]);
+  const [amount, sign, currency] = pairs[index];
+  const text = { fill: "currentColor", stroke: "none", fontWeight: 650 };
+  const label = { ...text, fontSize: 11, fontWeight: 500, textAnchor: "middle", fill: "#746b5c" };
+  const cycle = { duration: 3, repeat: Infinity, ease: "linear" };
+  return <div className="sketchScene" ref={target}>
+    <svg className="sketch" viewBox="0 0 500 230" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" role="img" aria-label="Illustration of a test USDT invoice, verified onchain settlement and simulated local currency payout.">
+      <g><path d="M28 36h76l24 24v124H28z M104 36v24h24 M44 82h62 M44 102h62 M44 122h36" />
+        <AnimatePresence mode="sync" initial={false}><motion.text key={amount} x="44" y="162" fontSize="14" {...text} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} transition={{duration: reduce ? 0 : .24}}>{amount}</motion.text></AnimatePresence>
+      </g>
+      <path d="M146 110h52m-8-8 8 8-8 8 M290 110h52m-8-8 8 8-8 8" stroke="#c9bea9" />
+      {running && <><motion.circle r="3.5" fill="#b58a3e" stroke="none" animate={{cx:[146,198,198,198],cy:110,opacity:[0,1,0,0]}} transition={{...cycle,times:[0,.32,.4,1]}} /><motion.circle r="3.5" fill="#b58a3e" stroke="none" animate={{cx:[290,290,342,342],cy:110,opacity:[0,0,1,0]}} transition={{...cycle,times:[0,.42,.75,1]}} /></>}
+      <circle cx="244" cy="110" r="34" fill="#f3ebdb" />
+      <motion.circle cx="244" cy="110" r="25" stroke="#b58a3e" strokeDasharray="2 5" style={{transformOrigin:"244px 110px"}} animate={{rotate:running ? 360 : 0}} transition={{duration:12,repeat:running ? Infinity : 0,ease:"linear"}} />
+      <text x="244" y="118" fontSize="23" textAnchor="middle" {...text}>₮</text>
+      <path d="M362 90l50-28 50 28z M370 98v64 M390 98v64 M434 98v64 M454 98v64 M358 170h108" />
+      <AnimatePresence mode="sync" initial={false}><motion.g key={currency} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} transition={{duration:reduce ? 0 : .24}}>
+        <text x="412" y="140" fontSize="23" textAnchor="middle" {...text}>{sign}</text>
+        <text x="412" y="210" {...label}>{currency} payout · simulated</text>
+      </motion.g></AnimatePresence>
+      <text x="78" y="210" {...label}>Invoice</text><text x="244" y="210" {...label}>Verified onchain</text>
     </svg>
-  );
+  </div>;
 }
 
 export function Pipeline({ steps }) {
@@ -75,15 +72,15 @@ export function Pipeline({ steps }) {
 
   return (
     <ol ref={list} className="pipeline">
-      {steps.map(({ title, text, d, sim }, i) => (
+      {steps.map(({ title, text, d }, i) => (
         <li key={title}>
-          <div className="pipelineCard">
+          <motion.div className="pipelineCard" whileHover={reduce ? undefined : { y: -5, scale: 1.015 }} transition={{ type: "spring", stiffness: 280, damping: 24 }}>
             <span className="pipelineIndex"><svg aria-hidden="true" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg></span>
             <div>
-              <h3>{i + 1}. {title}{sim && <em className="simTag">simulated</em>}</h3>
+              <h3>{i + 1}. {title}</h3>
               <p>{text}</p>
             </div>
-          </div>
+          </motion.div>
           {i < steps.length - 1 && <svg className="pipelineArc" aria-hidden="true" viewBox="0 0 144 120" preserveAspectRatio="none" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <motion.path d="M8 4 C93 4 51 116 136 116" vectorEffect="non-scaling-stroke"
               initial={{ pathLength: 0, opacity: 0 }}
